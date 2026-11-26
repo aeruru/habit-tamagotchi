@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="google-client-id" content="789094343074-durp1kf906u82gkfhaloneg79o8vbctp.apps.googleusercontent.com">
+  <meta name="theme-color" content="#f6f6ee">
+  <title>Habit Tamagotchi</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://accounts.google.com/gsi/client" async></script>
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="shell nav">
+      <a class="brand" href="#home"><span class="mark" aria-hidden="true">✿</span> Habit Tamagotchi</a>
+      <nav aria-label="Main navigation">
+        <a href="#home">Today</a><a href="#history">History</a><a href="#settings">Settings</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell" id="main"></main>
+  <footer class="shell" id="sync"></footer>
+  <dialog id="editor" aria-labelledby="dialog-title"></dialog>
+  <div id="notice" role="status" aria-live="polite"></div>
+  <template id="home">
+    <header class="intro"><div><p class="eyebrow" id="today-date"></p><h1>Your little grove<span>.</span></h1></div><button type="button" class="soft" data-action="google">Connect Google</button></header>
+    <div class="home-grid">
+      <section class="scene panel" aria-label="Your pet">
+        <div class="view"><canvas width="720" height="440" role="img" aria-label="An animated piglet beside its hut in a meadow"></canvas><span class="weather" id="weather"></span></div>
+        <div class="scene-footer"><div><h2>Fern’s grove</h2><p id="pet-state"></p></div><button class="soft" type="button" data-action="preview">Preview ramen</button></div>
+      </section>
+      <section class="checkins" aria-labelledby="checkins-title"><div class="checkins-heading"><h2 id="checkins-title">Daily check-ins</h2><a href="#history">View history</a></div><div id="cards"></div></section>
+    </div>
+  </template>
+</body>
+</html>
