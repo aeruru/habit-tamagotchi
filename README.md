@@ -20,6 +20,8 @@ Open [localhost:43183](http://localhost:43183). The local profile works immediat
 3. Put the public client ID in the `google-client-id` meta tag in `src/index.html`, or enter it in **Connect Google**. The app uses Google Identity Services in the browser and requires no client secret.
 4. Connect your account. The spreadsheet link appears in the footer. Reconnect after a reload or when the token expires. Google profiles and the device-local profile have separate histories.
 
+If sync pauses with HTTP 403, check the operation and Google reason shown in the footer. For `SERVICE_DISABLED` or `accessNotConfigured`, enable the named API in the same Google Cloud project as the OAuth client, then choose **Sync now**. For `ACCESS_TOKEN_SCOPE_INSUFFICIENT` or `insufficientPermissions`, disconnect, reconnect, and grant the requested permissions.
+
 App operations are stored locally and synced to Google's private app-data folder. The spreadsheet is an export with app-managed **Habit records**, **Habit settings**, and **Pet settings** tabs. Place your own charts and analysis on a separate tab. App retries reuse record and operation IDs. The client serializes sync in a browser where Web Locks are available. Simultaneous first-time spreadsheet creation from separate devices can race. A later sync selects a single tagged spreadsheet consistently.
 
 ## Defaults
