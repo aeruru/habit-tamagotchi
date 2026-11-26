@@ -1,4 +1,4 @@
-import { habits, periodKey } from '../habit-engine/index.js';
+import { periodKey, valueUnits } from '../habit-engine/index.js';
 
 const drive = 'https://www.googleapis.com/drive/v3';
 const upload = 'https://www.googleapis.com/upload/drive/v3';
@@ -104,15 +104,25 @@ export function googleSession(token) {
     const current = await api('Read spreadsheet tabs', url + '?fields=sheets(properties)');
     const tabs = {
       'Habit records': [
-        ['Record ID', 'Habit ID', 'Local date', 'Period start', 'Value', 'Unit', 'Meal', 'Skipped', 'Updated'],
+        ['Record ID', 'Habit ID', 'Local date', 'Period start', 'Value', 'Unit', 'Meal', 'Skipped', 'Updated', 'Note'],
         ...state.records.sort((a, b) => a.date.localeCompare(b.date)).map(row => [
-          row.id, row.habit, row.date, periodKey(habits[row.habit], row.date), row.value ?? '',
-          habits[row.habit].unit, row.meal ?? '', row.skip, row.updated,
+          row.id, row.habit, row.date, row.skip ? row.date : periodKey(state.habits[row.habit], row.date), row.value ?? '',
+          row.valueUnit ?? '', row.meal ?? '', row.skip, row.updated, row.note ?? '',
         ]),
       ],
       'Habit settings': [
-        ['Habit ID', 'Effective date', 'Enabled', 'Goal', 'Almost goal', 'Logging only', 'Treat', 'Updated'],
-        ...state.settings.map(row => [row.habit, row.date, row.enabled, row.goal, row.near, row.loggingOnly, row.treat, row.updated]),
+        ['Habit ID', 'Effective date', 'Enabled', 'Goal', 'Almost goal', 'Logging only', 'Treat', 'Updated', 'Period', 'Goal time', 'Almost-goal time',
+          'Number target', 'Almost-goal number', 'Number comparison'],
+        ...state.settings.map(row => [
+          row.habit, row.date, row.enabled, row.goal, row.near, row.loggingOnly, row.treat, row.updated, row.period,
+          row.deadline, row.grace, row.numberGoal, row.numberAlmost, row.numberGoal != null ? row.comparison : '',
+        ]),
+      ],
+      'Habits': [
+        ['Habit ID', 'Name', 'Period', 'Check-in value type', 'Unit', 'Icon'],
+        ...Object.entries(state.habits).map(([id, habit]) => [
+          id, habit.name, habit.period, habit.type, habit.type === 'number' ? habit.unit ?? valueUnits.number : valueUnits[habit.type], habit.icon,
+        ]),
       ],
       'Pet settings': [['Effect', 'Habit ID'], ...Object.entries(state.assignments)],
     };

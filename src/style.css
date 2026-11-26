@@ -21,7 +21,7 @@ h2 { font-size: 1.6rem; letter-spacing: -.035em; }
 h3 { font-size: 1rem; line-height: 1.25; }
 p { color: var(--muted); }
 a { color: var(--green); font-weight: 650; text-underline-offset: .23em; }
-button, input, select { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #a55f48; outline-offset: 2px; }
 .shell { width: min(1190px, calc(100% - 64px)); margin-inline: auto; }
@@ -76,7 +76,7 @@ label { display: grid; gap: 5px; font-size: .94rem; font-weight: 620; }
 label + label, fieldset p { margin-top: 8px; }
 .capitalize { text-transform: capitalize; }
 .check { display: flex; align-items: center; gap: 7px; }
-input:not([type=checkbox]), select { width: 100%; min-width: 0; border-radius: 8px; border: 1px solid #aebcaa; background: #fff; color: var(--ink); padding: 7px 9px; }
+input:not([type=checkbox]), select, textarea { width: 100%; min-width: 0; border-radius: 8px; border: 1px solid #aebcaa; background: #fff; color: var(--ink); padding: 7px 9px; }
 input[type=checkbox] { accent-color: var(--green); width: 17px; height: 17px; }
 footer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 15px; color: var(--muted); font-size: .9rem; padding: 0 0 32px; }
 dialog { width: min(440px, calc(100% - 24px)); border: 1px solid var(--line); border-radius: 18px; background: var(--white); color: var(--ink); padding: 22px; }
@@ -103,3 +103,13 @@ dialog h2, dialog p, dialog label { margin-bottom: 12px; }
   .habit-actions { gap: 2px; flex-wrap: nowrap; }
   .outcomes article { gap: 6px; grid-template-columns: 1fr 1fr auto auto; }
 }
+
+.check-in-note { white-space: pre-wrap; overflow-wrap: anywhere; }
+textarea { resize: vertical; }
+.clock-goals { display: none; }
+form:has(select[name="type"] option[value="clock"]:checked) .clock-goals { display: block; }
+form:has(select[name="type"] option[value="clock"]:checked) .frequency-near-goal { display: none; }
+.number-goals, .number-target { display: none; }
+form:has(select[name="type"] option[value="number"]:checked) .number-goals,
+.number-goals:has(select[name="number-mode"] option[value="value"]:checked) .number-target { display: block; }
+form:has(select[name="type"] option[value="number"]:checked):has(select[name="number-mode"] option[value="value"]:checked) .frequency-near-goal { display: none; }

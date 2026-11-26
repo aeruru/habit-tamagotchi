@@ -13,6 +13,8 @@ npm test
 
 Open [localhost:43183](http://localhost:43183). The local profile works immediately. Choose **History** to backfill, move, or remove an entry, and **Settings** to configure habits and pet effects.
 
+Under **Settings → Habits**, edit a starter habit or add your own. Every habit has a name, emoji, daily or weekly goal, and a Count, Clock time, or Number check-in. Count entries add their entered number of occurrences. Clock-time and number entries each count once. Clock-time habits can require a check-in by a goal time and set a later almost-goal time. Numbers range from 0 to 10,000 and allow up to two significant digits (for example, 7.5 or 120). **Track without a goal** records check-ins without awarding progress or treats. Changing the schedule regroups past check-ins, and changing the input type applies to new check-ins. Notes can be up to 500 characters.
+
 ## Enable Google Sheets
 
 1. In Google Cloud, enable the Google Drive and Google Sheets APIs and configure the OAuth consent screen. Add test accounts if the app is in testing.
@@ -26,8 +28,7 @@ App operations are stored locally and synced to Google's private app-data folder
 
 ## Defaults
 
-- Weeks start Monday. A sleep period closes at the end of the day after its intended night. Bedtime uses a noon-to-noon clock.
-- Sleep goals default to 8 hours with an almost goal of 7. A closed night without a sleep-duration log falls below goal. A closed night without bedtime counts as almost.
-- Hunger uses a 1–5 scale and defaults to logging only. Enabling a hunger goal counts check-ins independently of ratings.
-- Walks award one randomly selected treat per achieved daily goal by default. Hunger can award treats per observation. History changes recalculate progress without playing rewards.
+- Weeks start Monday. Bedtime defaults to one check-in by 11:00 p.m. per day, with 11:30 p.m. as the almost-goal time. Sleep defaults to one entry in hours per day. Saved times and durations retain their original units in History.
+- Exercise defaults to three occurrences a week, walks to two occurrences a day, and hunger to one number check-in a day. The recorded hunger number does not affect whether the goal is met.
+- Walks award one randomly selected treat per achieved daily goal by default. History changes recalculate progress without playing rewards.
 - Mood and hut have eight levels each. The scene uses original provisional Canvas artwork with a ramen preview and reusable placement anchors.

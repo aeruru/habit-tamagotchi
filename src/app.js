@@ -1,9 +1,9 @@
-import { habits, defaultSettings, materialize, rowsFor, sceneState } from './habit-engine/index.js';
+import { defaultSettings, materialize, rowsFor, sceneState } from './habit-engine/index.js';
 import { createHabitEditor, showDialog } from './habit-edit-reporting/editor.js';
 import { renderCheckIns } from './habit-edit-reporting/check-ins.js';
-import { esc, forToday, labelDate, today } from './habit-edit-reporting/format.js';
+import { esc, labelDate, today } from './habit-edit-reporting/format.js';
 import { renderHistory } from './habit-edit-reporting/history.js';
-import { renderSettings, submitSettings } from './habit-edit-reporting/settings.js';
+import { habitDialog, renderSettings, submitSettings } from './habit-edit-reporting/settings.js';
 import { createPetPanel } from './pet-display/web/panel.js';
 import { connectGoogle, googleSession } from './integrations/google.js';
 
@@ -12,7 +12,6 @@ const footer = document.querySelector('#sync');
 const editor = document.querySelector('#editor');
 const notice = document.querySelector('#notice');
 const prefix = 'habit-tamagotchi:';
-const habitEntries = Object.entries(habits);
 let account = 'guest';
 let email = '';
 let session;
@@ -95,7 +94,9 @@ async function synchronize() {
     if (missing.length || snapshot.some(op => !journal.has(op.id)) || localStorage.getItem(key('dirty'))) {
       const exportState = materialize(snapshot);
       exportState.settings = [
-        ...habitEntries.map(([id]) => ({ habit: id, date: '0000-01-01', ...defaultSettings(id) })),
+        ...Object.entries(exportState.habits).map(([id, habit]) => ({
+          habit: id, period: habit.period, date: habit.start ?? '0000-01-01', ...defaultSettings(id, habit),
+        })),
         ...exportState.settings,
       ];
       await currentSession.publish(sheetId, exportState);
@@ -197,16 +198,18 @@ document.addEventListener('click', event => {
   const target = event.target.closest('[data-action]');
   if (!target) return;
   const { action, habit: id, id: recordId } = target.dataset;
-  const date = id ? forToday(habits[id]) : undefined;
+  const date = id ? today() : undefined;
   const record = recordId ? state.records.find(row => row.id === recordId) : undefined;
   try {
     switch (action) {
       case 'google': signIn(); break;
       case 'disconnect': disconnect(); break;
+      case 'add-habit': habitDialog(state, openDialog, save, say); break;
+      case 'edit-habit': habitDialog(state, openDialog, save, say, id); break;
       case 'settings': location.hash = 'settings'; break;
       case 'retry': synchronize(); break;
       case 'cancel': editor.close(); break;
-      case 'quick': log(id, date, { value: 1 }, null, true); break;
+      case 'quick': log(id, date, { value: 1 }, undefined, true); break;
       case 'log': logDialog(id, date, undefined, true); break;
       case 'backfill': logDialog(id, historicalDate, undefined, false); break;
       case 'edit': if (record) logDialog(record.habit, record.date, record, false); break;
@@ -232,7 +235,7 @@ main.addEventListener('change', event => {
     render();
   }
 });
-main.addEventListener('submit', event => submitSettings(event, state, main, save, say));
+main.addEventListener('submit', event => submitSettings(event, save, say));
 addEventListener('hashchange', () => {
   pet.reset();
   render();
