@@ -253,6 +253,5 @@ setInterval(() => {
     if (!editor.open && !main.contains(document.activeElement)) render();
   }
 }, 30000);
-setInterval(() => { if (document.visibilityState === 'visible') synchronize(); }, 60000);
 reload();
 render();
