@@ -1,10 +1,12 @@
 import { outcome, periodKey, rowsFor, settingsAt, shift } from '../habit-engine/index.js';
 import { esc, labelDate, today, valueDisplay } from './format.js';
+import { renderHistoryCharts } from './history-charts.js';
 
 const outcomeLabels = { met: 'Goal met', almost: 'Almost met', miss: 'Below goal', open: 'In progress', skip: 'Skipped', inactive: 'Logging only or disabled' };
 
-export function renderHistory(main, state, historicalDate) {
+export function renderHistory(main, state, historicalDate, habitId, weeks) {
   main.innerHTML = '<header class="intro"><div><h1>History<span>.</span></h1><p>Backfill, correct, or undo a check-in.</p></div></header>' +
+    renderHistoryCharts(state, habitId, weeks, historicalDate) +
     '<section class="panel padded"><div class="section-head"><h2>Period outcomes</h2><label>Calendar date<input type="date" id="history-date" max="' + today() + '" value="' + historicalDate + '"></label></div>' +
     '<div class="outcomes">' + Object.entries(state.habits).map(([id, habit]) => {
       const date = periodKey(habit, historicalDate);

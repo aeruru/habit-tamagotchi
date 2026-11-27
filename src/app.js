@@ -1,8 +1,9 @@
-import { defaultSettings, materialize, rowsFor, sceneState } from './habit-engine/index.js';
+import { defaultSettings, materialize, rowsFor, sceneState, shift } from './habit-engine/index.js';
 import { createHabitEditor, showDialog } from './habit-edit-reporting/editor.js';
 import { renderCheckIns } from './habit-edit-reporting/check-ins.js';
 import { esc, labelDate, today } from './habit-edit-reporting/format.js';
 import { renderHistory } from './habit-edit-reporting/history.js';
+import { historyRanges } from './habit-edit-reporting/history-charts.js';
 import { habitDialog, renderSettings, submitSettings } from './habit-edit-reporting/settings.js';
 import { createPetPanel } from './pet-display/web/panel.js';
 import { connectGoogle, googleSession } from './integrations/google.js';
@@ -21,6 +22,8 @@ let syncing = false;
 let syncTimer;
 let undo;
 let historicalDate = today();
+let historyHabit;
+let historyWeeks = historyRanges[0];
 let scene;
 let state;
 
@@ -188,10 +191,25 @@ function render() {
     if (a.hash === page) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
-  if (page === '#history') renderHistory(main, state, historicalDate);
+  if (page === '#history') {
+    renderHistory(main, state, historicalDate, historyHabit, historyWeeks);
+    const heatmap = main.querySelector('.history-charts .chart-scroll');
+    const activeDay = heatmap?.querySelector('[tabindex="0"]');
+    if (activeDay) heatmap.scrollLeft = Math.max(0, activeDay.offsetLeft - heatmap.clientWidth + 24);
+  }
   else if (page === '#settings') renderSettings(main, state, Boolean(session), email);
   else home(previousCanvas);
   renderStatus();
+}
+
+function chooseHistoryDay(date) {
+  const scrollLeft = main.querySelector('.history-charts .chart-scroll').scrollLeft;
+  historicalDate = date;
+  render();
+  main.querySelector('.history-charts .chart-scroll').scrollLeft = scrollLeft;
+  const cell = main.querySelector('[data-action="history-day"][aria-pressed="true"]');
+  cell?.focus({ preventScroll: true });
+  cell?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 document.addEventListener('click', event => {
@@ -213,6 +231,7 @@ document.addEventListener('click', event => {
       case 'log': logDialog(id, date, undefined, true); break;
       case 'backfill': logDialog(id, historicalDate, undefined, false); break;
       case 'edit': if (record) logDialog(record.habit, record.date, record, false); break;
+      case 'history-day': chooseHistoryDay(target.dataset.date); break;
       case 'skip': skipPeriod(id, date); break;
       case 'skip-history': skipPeriod(id, historicalDate); break;
       case 'resume': removeRow(rowsFor(state, id, date).find(row => row.skip)); break;
@@ -230,10 +249,21 @@ document.addEventListener('click', event => {
   }
 });
 main.addEventListener('change', event => {
-  if (event.target.id === 'history-date' && event.target.value && event.target.validity.valid) {
-    historicalDate = event.target.value;
-    render();
-  }
+  const { id, value, validity } = event.target;
+  if (id === 'history-date' && value && validity.valid) historicalDate = value;
+  else if (id === 'history-habit' && Object.hasOwn(state.habits, value)) historyHabit = value;
+  else if (id === 'history-range' && historyRanges.includes(Number(value))) historyWeeks = Number(value);
+  else return;
+  render();
+  document.getElementById(id)?.focus({ preventScroll: true });
+});
+main.addEventListener('keydown', event => {
+  if (event.target.dataset.action !== 'history-day') return;
+  const offsets = { ArrowLeft: -7, ArrowRight: 7, ArrowUp: -1, ArrowDown: 1 };
+  if (!Object.hasOwn(offsets, event.key)) return;
+  event.preventDefault();
+  const date = shift(event.target.dataset.date, offsets[event.key]);
+  if (main.querySelector('[data-action="history-day"][data-date="' + date + '"]')) chooseHistoryDay(date);
 });
 main.addEventListener('submit', event => submitSettings(event, save, say));
 addEventListener('hashchange', () => {

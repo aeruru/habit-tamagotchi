@@ -10,6 +10,7 @@ const files = new Map([
   ['/src/habit-edit-reporting/editor.js', ['src/habit-edit-reporting/editor.js', 'text/javascript']],
   ['/src/habit-edit-reporting/format.js', ['src/habit-edit-reporting/format.js', 'text/javascript']],
   ['/src/habit-edit-reporting/history.js', ['src/habit-edit-reporting/history.js', 'text/javascript']],
+  ['/src/habit-edit-reporting/history-charts.js', ['src/habit-edit-reporting/history-charts.js', 'text/javascript']],
   ['/src/habit-edit-reporting/settings.js', ['src/habit-edit-reporting/settings.js', 'text/javascript']],
   ['/src/habit-engine/index.js', ['src/habit-engine/index.js', 'text/javascript']],
   ['/src/integrations/google.js', ['src/integrations/google.js', 'text/javascript']],
