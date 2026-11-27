@@ -5,6 +5,35 @@ const upload = 'https://www.googleapis.com/upload/drive/v3';
 const sheets = 'https://sheets.googleapis.com/v4/spreadsheets';
 const tag = 'habitTamagotchiV1';
 const scopes = ['openid', 'https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive.appdata'];
+const connectionKey = 'habit-tamagotchi:google-connection';
+
+export function cacheGoogleConnection(connection) {
+  try {
+    if (connection) sessionStorage.setItem(connectionKey, JSON.stringify(connection));
+    else sessionStorage.removeItem(connectionKey);
+  } catch {
+    // Browsers that block session storage can still use the in-memory connection.
+  }
+}
+
+export function restoreGoogleConnection(clientId, now = Date.now()) {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(connectionKey));
+    if (!saved) return undefined;
+    if (saved.clientId !== clientId || typeof saved.sub !== 'string' || !saved.sub) {
+      cacheGoogleConnection();
+      return undefined;
+    }
+    if (typeof saved.token !== 'string' || !saved.token || !Number.isFinite(saved.expiresAt) || saved.expiresAt <= now) {
+      delete saved.token;
+      cacheGoogleConnection(saved);
+    }
+    return saved;
+  } catch {
+    cacheGoogleConnection();
+    return undefined;
+  }
+}
 
 async function requestError(response, operation, service) {
   const payload = await response.json().catch(() => undefined);
@@ -33,9 +62,11 @@ export function connectGoogle(clientId) {
       client_id: clientId,
       scope: scopes.join(' '),
       callback(response) {
-        if (response.error || !oauth.hasGrantedAllScopes(response, ...scopes)) {
+        const lifetime = Number(response.expires_in);
+        if (response.error || !response.access_token || !Number.isFinite(lifetime) || lifetime <= 0 ||
+            !oauth.hasGrantedAllScopes(response, ...scopes)) {
           reject(new Error('Google sign-in needs access to the app spreadsheet and app data.'));
-        } else resolve(response.access_token);
+        } else resolve({ token: response.access_token, expiresAt: Date.now() + lifetime * 1000 });
       },
       error_callback: () => reject(new Error('The Google sign-in window closed or could not open.')),
     }).requestAccessToken({ prompt: 'select_account' });

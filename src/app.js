@@ -3,10 +3,10 @@ import { createHabitEditor, showDialog } from './habit-edit-reporting/editor.js'
 import { renderCheckIns } from './habit-edit-reporting/check-ins.js';
 import { esc, labelDate, today } from './habit-edit-reporting/format.js';
 import { renderHistory } from './habit-edit-reporting/history.js';
-import { historyRanges } from './habit-edit-reporting/history-charts.js';
+import { renderTrends, trendRanges } from './habit-edit-reporting/history-charts.js';
 import { habitDialog, renderSettings, submitSettings } from './habit-edit-reporting/settings.js';
 import { createPetPanel } from './pet-display/web/panel.js';
-import { connectGoogle, googleSession } from './integrations/google.js';
+import { cacheGoogleConnection, connectGoogle, googleSession, restoreGoogleConnection } from './integrations/google.js';
 
 const main = document.querySelector('#main');
 const footer = document.querySelector('#sync');
@@ -16,18 +16,43 @@ const prefix = 'habit-tamagotchi:';
 let account = 'guest';
 let email = '';
 let session;
+let googleConnection;
+let expirationTimer;
 let sheetId;
+let verifiedSheetId;
 let syncStatus = '';
 let syncing = false;
 let syncTimer;
 let undo;
 let historicalDate = today();
-let historyHabit;
-let historyWeeks = historyRanges[0];
+let trendWeeks = trendRanges[0];
+let showTrendTestData = false;
+let testTrendDate;
 let scene;
 let state;
 
 function key(suffix) { return prefix + account + ':' + suffix; }
+function googleClientId() {
+  return document.querySelector('meta[name=google-client-id]').content || localStorage.getItem(prefix + 'client');
+}
+function setGoogleConnection(connection) {
+  clearTimeout(expirationTimer);
+  googleConnection = connection;
+  account = connection ? 'google:' + connection.sub : 'guest';
+  email = connection?.email ?? '';
+  sheetId = connection?.sheetId;
+  verifiedSheetId = undefined;
+  session = connection?.token ? googleSession(connection.token) : undefined;
+  cacheGoogleConnection(connection);
+  if (session) expirationTimer = setTimeout(expireGoogleConnection, Math.max(0, connection.expiresAt - Date.now()));
+}
+function expireGoogleConnection() {
+  if (!session) return;
+  const { token, ...profile } = googleConnection;
+  setGoogleConnection(profile);
+  if (editor.open || main.contains(document.activeElement) && document.activeElement.matches('input, select')) renderStatus();
+  else render();
+}
 function operations() {
   const stem = key('op:');
   return Object.keys(localStorage).filter(name => name.startsWith(stem))
@@ -65,13 +90,18 @@ function renderStatus() {
   const pending = localStorage.getItem(key('dirty'));
   let message = 'Local profile · saved on this device';
   if (session) message = syncStatus || (pending ? 'Changes waiting to sync' : 'Synced to Google');
-  else if (account !== 'guest') message = 'Google disconnected · reconnect to sync this profile';
+  else if (account !== 'guest') message = 'Google session expired · reconnect to sync this profile';
   footer.innerHTML = '<span>' + esc(message) + '</span>' +
     (sheetId ? ' <a target="_blank" rel="noopener" href="https://docs.google.com/spreadsheets/d/' + encodeURIComponent(sheetId) + '/edit">Open spreadsheet</a>' : '') +
-    (session ? ' <button class="link" data-action="retry">Sync now</button>' : '');
+    (session ? ' <button class="link" data-action="retry">Sync now</button>' :
+      account !== 'guest' ? ' <button class="link" data-action="google">Reconnect Google</button>' : '');
 }
 async function synchronize() {
   if (!session || syncing) return;
+  if (googleConnection.expiresAt <= Date.now()) {
+    expireGoogleConnection();
+    return;
+  }
   syncing = true;
   const currentSession = session;
   syncStatus = 'Syncing…';
@@ -93,7 +123,10 @@ async function synchronize() {
         id => localStorage.getItem(key('drive:' + id)),
         (id, file) => localStorage.setItem(key('drive:' + id), file));
     }
-    sheetId ||= await currentSession.spreadsheet();
+    verifiedSheetId ||= await currentSession.spreadsheet();
+    sheetId = verifiedSheetId;
+    googleConnection.sheetId = sheetId;
+    cacheGoogleConnection(googleConnection);
     if (missing.length || snapshot.some(op => !journal.has(op.id)) || localStorage.getItem(key('dirty'))) {
       const exportState = materialize(snapshot);
       exportState.settings = [
@@ -115,15 +148,18 @@ async function synchronize() {
     else await run();
     if (localStorage.getItem(key('dirty'))) queueSync();
   } catch (error) {
-    syncStatus = 'Sync paused · ' + error.message;
-    renderStatus();
+    if (error.status === 401) expireGoogleConnection();
+    else {
+      syncStatus = 'Sync paused · ' + error.message;
+      renderStatus();
+    }
   } finally {
     syncing = false;
   }
 }
 function signIn() {
   if (syncing) return;
-  const clientId = document.querySelector('meta[name=google-client-id]').content || localStorage.getItem(prefix + 'client');
+  const clientId = googleClientId();
   if (!clientId) {
     openDialog('Connect Google', '<p>Enter the Web OAuth client ID for this installation. Local and Google profiles have separate histories.</p>' +
       '<label>OAuth client ID<input name="client" required pattern="[A-Za-z0-9.-]+[.]apps[.]googleusercontent[.]com"></label>', form => {
@@ -132,14 +168,14 @@ function signIn() {
     }, 'Connect');
     return;
   }
-  connectGoogle(clientId).then(async token => {
-    const connected = googleSession(token);
+  connectGoogle(clientId).then(async authorization => {
+    const connected = googleSession(authorization.token);
     const profile = await connected.profile();
     if (syncing) return;
-    session = connected;
-    account = 'google:' + profile.sub;
-    email = profile.email ?? 'Google account';
-    sheetId = undefined;
+    if (!profile.sub) throw new Error('Google did not return an account ID.');
+    const previousSheet = googleConnection?.sub === profile.sub ? sheetId : undefined;
+    setGoogleConnection({ ...authorization, clientId, sub: profile.sub, email: profile.email ?? 'Google account', sheetId: previousSheet });
+    syncStatus = '';
     undo = undefined;
     notice.replaceChildren();
     reload();
@@ -150,11 +186,8 @@ function signIn() {
 }
 function disconnect() {
   if (syncing) return say('Google sync is in progress.');
-  session = undefined;
-  sheetId = undefined;
+  setGoogleConnection();
   syncStatus = '';
-  email = '';
-  account = 'guest';
   undo = undefined;
   notice.replaceChildren();
   reload();
@@ -178,6 +211,8 @@ function home(previousCanvas) {
   if (session) {
     google.textContent = 'Google connected';
     google.dataset.action = 'settings';
+  } else if (googleConnection) {
+    google.textContent = 'Reconnect Google';
   }
   pet.render(previousCanvas);
   renderCheckIns(main.querySelector('#cards'), state);
@@ -186,28 +221,33 @@ function home(previousCanvas) {
 function render() {
   const previousCanvas = main.querySelector('canvas');
   main.replaceChildren();
-  const page = ['#history', '#settings'].includes(location.hash) ? location.hash : '#home';
+  const page = ['#history', '#trends', '#settings'].includes(location.hash) ? location.hash : '#home';
   document.querySelectorAll('nav a').forEach(a => {
     if (a.hash === page) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
-  if (page === '#history') {
-    renderHistory(main, state, historicalDate, historyHabit, historyWeeks);
-    const heatmap = main.querySelector('.history-charts .chart-scroll');
-    const activeDay = heatmap?.querySelector('[tabindex="0"]');
-    if (activeDay) heatmap.scrollLeft = Math.max(0, activeDay.offsetLeft - heatmap.clientWidth + 24);
+  if (page === '#history') renderHistory(main, state);
+  else if (page === '#trends') {
+    renderTrends(main, state, trendWeeks, showTrendTestData ? testTrendDate ?? today() : historicalDate, showTrendTestData);
+    for (const heatmap of main.querySelectorAll('.heatmap-scroll')) {
+      const activeDay = heatmap.querySelector('[tabindex="0"]');
+      if (activeDay) heatmap.scrollLeft = Math.max(0, activeDay.offsetLeft - heatmap.clientWidth + 24);
+    }
   }
   else if (page === '#settings') renderSettings(main, state, Boolean(session), email);
   else home(previousCanvas);
   renderStatus();
 }
 
-function chooseHistoryDay(date) {
-  const scrollLeft = main.querySelector('.history-charts .chart-scroll').scrollLeft;
-  historicalDate = date;
+function chooseHistoryDay(date, row) {
+  const habitId = row.dataset.trendHabit;
+  const scrollLeft = row.querySelector('.heatmap-scroll').scrollLeft;
+  if (showTrendTestData) testTrendDate = date;
+  else historicalDate = date;
   render();
-  main.querySelector('.history-charts .chart-scroll').scrollLeft = scrollLeft;
-  const cell = main.querySelector('[data-action="history-day"][aria-pressed="true"]');
+  const updatedRow = [...main.querySelectorAll('.trend-row')].find(trend => trend.dataset.trendHabit === habitId);
+  updatedRow.querySelector('.heatmap-scroll').scrollLeft = scrollLeft;
+  const cell = updatedRow.querySelector('[data-action="history-day"][aria-pressed="true"]');
   cell?.focus({ preventScroll: true });
   cell?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
@@ -231,7 +271,12 @@ document.addEventListener('click', event => {
       case 'log': logDialog(id, date, undefined, true); break;
       case 'backfill': logDialog(id, historicalDate, undefined, false); break;
       case 'edit': if (record) logDialog(record.habit, record.date, record, false); break;
-      case 'history-day': chooseHistoryDay(target.dataset.date); break;
+      case 'history-day': chooseHistoryDay(target.dataset.date, target.closest('.trend-row')); break;
+      case 'toggle-trend-data':
+        showTrendTestData = !showTrendTestData;
+        render();
+        main.querySelector('[data-action="toggle-trend-data"]').focus({ preventScroll: true });
+        break;
       case 'skip': skipPeriod(id, date); break;
       case 'skip-history': skipPeriod(id, historicalDate); break;
       case 'resume': removeRow(rowsFor(state, id, date).find(row => row.skip)); break;
@@ -251,8 +296,7 @@ document.addEventListener('click', event => {
 main.addEventListener('change', event => {
   const { id, value, validity } = event.target;
   if (id === 'history-date' && value && validity.valid) historicalDate = value;
-  else if (id === 'history-habit' && Object.hasOwn(state.habits, value)) historyHabit = value;
-  else if (id === 'history-range' && historyRanges.includes(Number(value))) historyWeeks = Number(value);
+  else if (id === 'trend-range' && trendRanges.includes(Number(value))) trendWeeks = Number(value);
   else return;
   render();
   document.getElementById(id)?.focus({ preventScroll: true });
@@ -263,7 +307,8 @@ main.addEventListener('keydown', event => {
   if (!Object.hasOwn(offsets, event.key)) return;
   event.preventDefault();
   const date = shift(event.target.dataset.date, offsets[event.key]);
-  if (main.querySelector('[data-action="history-day"][data-date="' + date + '"]')) chooseHistoryDay(date);
+  const row = event.target.closest('.trend-row');
+  if (row.querySelector('[data-action="history-day"][data-date="' + date + '"]')) chooseHistoryDay(date, row);
 });
 main.addEventListener('submit', event => submitSettings(event, save, say));
 addEventListener('hashchange', () => {
@@ -286,5 +331,6 @@ setInterval(() => {
     if (!editor.open && !main.contains(document.activeElement)) render();
   }
 }, 30000);
+setGoogleConnection(restoreGoogleConnection(googleClientId()));
 reload();
 render();

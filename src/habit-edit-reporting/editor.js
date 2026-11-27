@@ -1,5 +1,5 @@
 import { checkInNoteLimit, maxCheckInNumber, meals, outcome, periodKey, rowsFor, settingsAt, validCheckInNumber, valueUnits } from '../habit-engine/index.js';
-import { esc, selected, today } from './format.js';
+import { clockTimeOptions, esc, selectableClockTime, selected, today } from './format.js';
 
 export function showDialog(editor, title, body, submit, button = 'Save check-in') {
   editor.innerHTML = '<form><h2 id="dialog-title">' + esc(title) + '</h2>' + body +
@@ -42,8 +42,8 @@ export function createHabitEditor({ readState, save, say, showDialog, playReward
     if (type === 'number' && !validCheckInNumber(values.value)) {
       throw new Error('Enter a number from 0 to ' + maxCheckInNumber.toLocaleString() + ' with at most two significant digits, such as 7.5 or 120.');
     }
-    if (type === 'clock' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(values.value)) {
-      throw new Error('Enter a valid clock time.');
+    if (type === 'clock' && !selectableClockTime(values.value, original?.value)) {
+      throw new Error('Choose a time in 15-minute increments.');
     }
     const valueUnit = original?.valueUnit ?? (type === 'number' ? habit.unit ?? valueUnits[type] : valueUnits[type]);
     const row = { id: original?.id ?? crypto.randomUUID(), habit: id, date,
@@ -63,7 +63,7 @@ export function createHabitEditor({ readState, save, say, showDialog, playReward
     const type = row?.valueType ?? habit.type;
     let inputs = '';
     if (type === 'clock') {
-      inputs = '<label>Time<input required type="time" name="value" value="' + esc(row?.value) + '"></label>';
+      inputs = '<label>Time<select required name="value">' + clockTimeOptions(row?.value, 'Select a time') + '</select></label>';
       if (settingsAt(readState(), id, periodKey(habit, date)).deadline >= '12:00') {
         inputs += '<p>For a time after midnight, use the date of the evening before.</p>';
       }

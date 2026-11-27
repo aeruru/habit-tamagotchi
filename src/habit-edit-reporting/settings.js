@@ -1,5 +1,5 @@
 import { checkInTypes, clockOrder, effects, maxCheckInNumber, periodKey, settingsAt, validCheckInNumber } from '../habit-engine/index.js';
-import { checked, esc, selected, today } from './format.js';
+import { checked, clockTimeOptions, esc, selectableClockTime, selected, today } from './format.js';
 
 const emojiSuggestions = ['🌱', '💧', '📚', '🏃', '🧘', '🎸', '🥗', '🛌', '✨'];
 const emojiPattern = /^(?:\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})*(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})*)*|\p{Regional_Indicator}{2}|[0-9#*]\uFE0F?\u20E3)$/u;
@@ -7,8 +7,10 @@ const emojiPattern = /^(?:\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})
 export function renderSettings(main, state, connected, email) {
   const habitEntries = Object.entries(state.habits);
   main.innerHTML = '<header class="intro"><div><h1>Settings<span>.</span></h1></div></header>' +
-    '<section class="panel padded"><h2>Google Sheets</h2><p>' + (connected ? 'Connected as ' + esc(email) : 'Connect a Google account to create a dedicated spreadsheet and sync an account profile.') + '</p>' +
-    '<button class="soft" data-action="' + (connected ? 'disconnect">Disconnect' : 'google">Connect Google') + '</button></section>' +
+    '<section class="panel padded"><h2>Google Sheets</h2><p>' + (connected ? 'Connected as ' + esc(email) :
+      email ? 'Reconnect to sync the profile for ' + esc(email) + '.' : 'Connect a Google account to create a dedicated spreadsheet and sync an account profile.') + '</p>' +
+    (connected ? '' : '<button class="soft" data-action="google">' + (email ? 'Reconnect Google' : 'Connect Google') + '</button> ') +
+    (email ? '<button class="soft" data-action="disconnect">Disconnect</button>' : '') + '</section>' +
     '<section class="panel padded"><div class="section-head"><h2>Habits</h2><button class="soft" data-action="add-habit">Add habit</button></div>' +
     '<div class="history-list">' + habitEntries.map(([id, habit]) =>
       '<article><div><strong><span aria-hidden="true">' + esc(habit.icon) + '</span> ' + esc(habit.name) + '</strong><p>' + (habit.period === 'week' ? 'Weekly' : 'Daily') +
@@ -34,38 +36,40 @@ export function submitSettings(event, save, say) {
 export function habitDialog(state, showDialog, save, say, id) {
   const existing = state.habits[id];
   const nameField = '<label>Name<input name="name" required maxlength="80" value="' + esc(existing?.name) + '"></label>';
-  const iconField = '<label>Emoji icon<input name="icon" required maxlength="32" list="habit-emoji" value="' +
+  const iconField = '<label class="habit-editor-emoji">Emoji<input name="icon" required maxlength="32" list="habit-emoji" value="' +
     esc(existing?.icon ?? '🌱') + '"></label><datalist id="habit-emoji">' +
     emojiSuggestions.map(emoji => '<option value="' + emoji + '"></option>').join('') + '</datalist>';
   const settings = existing ? settingsAt(state, id, periodKey(existing, today())) :
     { goal: 1, near: 0, enabled: true, loggingOnly: false, treat: false };
-  const fields = '<label>Schedule<select name="period"><option value="day" ' + selected(existing?.period, 'day') + '>Daily</option>' +
+  const fields = '<div class="habit-editor-pair"><label>Schedule<select name="period"><option value="day" ' + selected(existing?.period, 'day') + '>Daily</option>' +
     '<option value="week" ' + selected(existing?.period, 'week') + '>Weekly</option></select></label>' +
     '<label>Check-in value<select name="type">' + Object.entries(checkInTypes).map(([type, label]) =>
       '<option value="' + type + '" ' + selected(existing?.type, type) + '>' + label + '</option>').join('') +
-    '</select></label><p>The check-in type controls what you record.</p>' +
+    '</select></label></div>' +
     '<div class="number-goals"><label>What counts toward the goal?<select name="number-mode">' +
     '<option value="check-in" ' + selected(settings.numberGoal == null, true) + '>Any check-in</option>' +
     '<option value="value" ' + selected(settings.numberGoal != null, true) + '>Check-in meets a number target</option></select></label>' +
     '<div class="number-target"><label>Comparison<select name="comparison">' +
     '<option value="at-least" ' + selected(settings.comparison, 'at-least') + '>At least</option>' +
     '<option value="at-most" ' + selected(settings.comparison, 'at-most') + '>At most</option></select></label>' +
-    '<label>Target value<input type="number" inputmode="decimal" step="any" min="0" max="' + maxCheckInNumber +
+    '<div class="habit-editor-pair"><label>Target value<input type="number" inputmode="decimal" step="any" min="0" max="' + maxCheckInNumber +
     '" name="number-goal" value="' + esc(settings.numberGoal) + '"></label>' +
     '<label>Almost-goal value (optional)<input type="number" inputmode="decimal" step="any" min="0" max="' + maxCheckInNumber +
-    '" name="number-almost" value="' + esc(settings.numberAlmost) + '"></label></div></div>' +
-    '<label>Goal (check-ins per period)<input name="goal" type="number" min="1" max="10000" step="1" required value="' + settings.goal + '"></label>' +
-    '<label class="frequency-near-goal">Almost goal (check-ins)<input name="near" type="number" min="0" max="9999" step="1" value="' + settings.near + '"></label>' +
-    '<div class="clock-goals"><label>Goal time (by)<input name="deadline" type="time" value="' + esc(settings.deadline) + '"></label>' +
-    '<label>Almost-goal time (by, optional)<input name="grace" type="time" value="' + esc(settings.grace) + '"></label>' +
-    '<p>Leave both times blank to count every check-in. For afternoon and evening goals, times after midnight count toward the same night.</p></div>' +
-    '<label class="check"><input type="checkbox" name="enabled" ' + checked(settings.enabled) + '> Enabled</label>' +
+    '" name="number-almost" value="' + esc(settings.numberAlmost) + '"></label></div></div></div>' +
+    '<div class="habit-editor-pair"><label>Goal (check-ins per period)<input name="goal" type="number" min="1" max="10000" step="1" required value="' + settings.goal + '"></label>' +
+    '<label class="frequency-near-goal">Almost goal (check-ins)<input name="near" type="number" min="0" max="9999" step="1" value="' + settings.near + '"></label></div>' +
+    '<div class="clock-goals"><div class="habit-editor-pair"><label>Goal time (by)<select name="deadline">' + clockTimeOptions(settings.deadline, 'No cutoff') + '</select></label>' +
+    '<label>Almost-goal time (optional)<select name="grace">' + clockTimeOptions(settings.grace, 'No cutoff') + '</select></label></div>' +
+    '<p>Leave both blank to count every check-in. For afternoon and evening goals, times after midnight count toward the same night.</p></div>' +
+    '<div class="habit-editor-options"><label class="check"><input type="checkbox" name="enabled" ' + checked(settings.enabled) + '> Enabled</label>' +
     '<label class="check"><input type="checkbox" name="logging" aria-describedby="logging-help" ' + checked(settings.loggingOnly) + '> Track without a goal</label>' +
-    '<p id="logging-help">Save check-ins to History without earning goal progress or treats.</p>' +
-    '<label class="check"><input type="checkbox" name="treat" ' + checked(settings.treat) + '> Award treats</label>' +
-    (existing ? '<p>Changing the schedule regroups past check-ins. Existing check-in values keep their original type.</p>' : '');
+    '<label class="check"><input type="checkbox" name="treat" ' + checked(settings.treat) + '> Award treats</label></div>' +
+    '<p id="logging-help">Tracking without a goal saves check-ins without awarding progress or treats.</p>' +
+    (existing ? '<p>Schedule changes regroup past check-ins. Saved values keep their original type.</p>' : '');
 
-  showDialog(existing ? 'Edit habit' : 'Add habit', nameField + iconField + fields, form => {
+  const body = '<div class="habit-editor-fields"><div class="habit-editor-identity">' + iconField + nameField +
+    '</div>' + fields + '</div>';
+  showDialog(existing ? 'Edit habit' : 'Add habit', body, form => {
     const name = form.get('name').trim();
     const icon = form.get('icon').trim();
     if (!name || name.length > 80) throw new Error('Enter a name of up to 80 characters.');
@@ -81,10 +85,11 @@ export function habitDialog(state, showDialog, save, say, id) {
     }
     const deadline = type === 'clock' ? form.get('deadline') ?? '' : '';
     const grace = type === 'clock' ? form.get('grace') ?? '' : '';
-    const validTime = /^([01]\d|2[0-3]):[0-5]\d$/;
-    if ((deadline && !validTime.test(deadline)) || (grace &&
-        (!deadline || !validTime.test(grace) || clockOrder(grace, deadline) <= clockOrder(deadline, deadline)))) {
-      throw new Error('Enter a valid goal time and an almost-goal time later than the goal time.');
+    if ((deadline && !selectableClockTime(deadline, settings.deadline)) || (grace && !selectableClockTime(grace, settings.grace))) {
+      throw new Error('Choose times in 15-minute increments.');
+    }
+    if (grace && (!deadline || clockOrder(grace, deadline) <= clockOrder(deadline, deadline))) {
+      throw new Error('Choose an almost-goal time later than the goal time.');
     }
     const comparison = form.get('comparison') === 'at-most' ? 'at-most' : 'at-least';
     const target = form.get('number-goal');
