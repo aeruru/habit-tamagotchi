@@ -28,6 +28,23 @@ const pigFrames = {
   tired: [1320, 546, 412, 223, 187],
 };
 const walkFrameStarts = [37, 399, 748, 1100, 1456, 1812];
+const hedgehogFrames = {
+  idle: [193, 123, 176, 153, 88],
+  blink: [381, 119, 176, 157, 88],
+  happy: [565, 119, 175, 157, 87],
+  chew: [753, 120, 177, 156, 87],
+  yawn: [941, 94, 175, 182, 87],
+  excited: [1125, 100, 181, 176, 87],
+  sleep: [1317, 103, 189, 173, 92],
+  tired: [1062, 708, 210, 157, 92],
+};
+const pets = {
+  pig: { frames: pigFrames, file: 'pig-sprites.png', walkFile: 'pig-walk.png',
+    walkStarts: walkFrameStarts, walkBounds: [211, 348, 280], scale: animal.scale, walkScale: 0.40 },
+  hedgehog: { frames: hedgehogFrames, file: 'hedgehog-sprites.png', walkFile: 'hedgehog-sprites.png',
+    walkStarts: [208, 424, 641, 859, 1077, 1295], walkBounds: [415, 202, 162], scale: 0.66, walkScale: 0.61 },
+};
+export const petNames = { pig: 'Pig', hedgehog: 'Hedgehog' };
 const walkFrameMs = 125;
 const walkDuration = walkFrameStarts.length * walkFrameMs * 5;
 const restDuration = 1800;
@@ -45,7 +62,7 @@ function walkPose(time) {
   };
 }
 
-function pigPose({ mood, weather, night }, time, rewardAge) {
+function petPose({ mood, weather, night }, time, rewardAge) {
   if (rewardAge !== undefined) {
     if (!time) return 'chew';
     if (rewardAge < 400) return 'excited';
@@ -59,8 +76,7 @@ function pigPose({ mood, weather, night }, time, rewardAge) {
   return mood >= 6 ? 'happy' : 'idle';
 }
 
-let pigSprites;
-let walkSprites;
+const petSprites = new Map();
 const treatSprites = new Map();
 
 function loadSprite(file) {
@@ -76,8 +92,6 @@ function treatSprite(index) {
 
 export function mountScene(canvas, readState, onFinish) {
   const ctx = canvas.getContext('2d');
-  pigSprites ??= loadSprite('pig-sprites.png');
-  walkSprites ??= loadSprite('pig-walk.png');
   treatSprite(0);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   let reward;
@@ -182,26 +196,27 @@ export function mountScene(canvas, readState, onFinish) {
     ctx.restore();
   }
 
-  function pig(state, time, eating, rewardAge, canWalk) {
-    if (!pigSprites.naturalWidth) return;
+  function drawPet(state, art, sprite, walkSprite, time, eating, rewardAge, canWalk) {
+    if (!sprite.naturalWidth) return;
     const { x, facing, frame } = walkPose(walkTime);
-    const { y, scale } = animal;
+    const { y } = animal;
+    const { scale, walkScale } = art;
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(facing, 1);
     if (canWalk && frame !== undefined) {
       // The supplied walk frames include their own contact shadows.
-      const walkScale = 0.40;
-      ctx.drawImage(walkSprites, walkFrameStarts[frame], 211, 348, 280,
-        -174 * walkScale, -280 * walkScale, 348 * walkScale, 280 * walkScale);
+      const [top, width, height] = art.walkBounds;
+      ctx.drawImage(walkSprite, art.walkStarts[frame], top, width, height,
+        -width * walkScale / 2, -height * walkScale, width * walkScale, height * walkScale);
       ctx.restore();
       return;
     }
     const phase = time / (state.mood < 4 ? 560 : 380);
-    const [sx, sy, width, height, anchor] = pigFrames[pigPose(state, time, rewardAge)];
+    const [sx, sy, width, height, anchor] = art.frames[petPose(state, time, rewardAge)];
     const heightOnCanvas = height * scale * (1 + Math.sin(phase) * 0.01);
-    oval(0, -2, 47, 6, '#62503b52');
-    ctx.drawImage(pigSprites, sx, sy, width, height,
+    if (state.pet !== 'hedgehog') oval(0, -2, 47, 6, '#62503b52');
+    ctx.drawImage(sprite, sx, sy, width, height,
       -anchor * scale, -heightOnCanvas, width * scale, heightOnCanvas);
     if (eating) food(...animal.food, eating);
     ctx.restore();
@@ -217,18 +232,24 @@ export function mountScene(canvas, readState, onFinish) {
     if (!canvas.isConnected) return;
     const t = reduced.matches ? 0 : time;
     const state = readState();
+    const art = pets[state.pet] ?? pets.pig;
+    for (const file of [art.file, art.walkFile]) {
+      if (!petSprites.has(file)) petSprites.set(file, loadSprite(file));
+    }
+    const sprite = petSprites.get(art.file);
+    const walkSprite = petSprites.get(art.walkFile);
     if (reward?.sprite.complete) reward.start ??= time;
     if (reward?.start !== undefined && time - reward.start > 3200) {
       reward = undefined;
       onFinish();
     }
     const eating = reward?.start !== undefined ? reward : undefined;
-    const canWalk = !reduced.matches && !eating && state.mood >= 4 && state.weather >= 3 && walkSprites.naturalWidth > 0;
+    const canWalk = !reduced.matches && !eating && state.mood >= 4 && state.weather >= 3 && walkSprite.naturalWidth > 0;
     if (canWalk && previousFrame !== undefined) walkTime += Math.min(time - previousFrame, 50);
     previousFrame = time;
     landscape(state, t);
     hut(state.hut);
-    pig(state, t, eating, eating ? time - eating.start : undefined, canWalk);
+    drawPet(state, art, sprite, walkSprite, t, eating, eating ? time - eating.start : undefined, canWalk);
     if (state.weather < 3) {
       for (let i = 0; i < (3 - state.weather) * 26; i++) {
         const x = (i * 137 + t * 0.16) % 740;

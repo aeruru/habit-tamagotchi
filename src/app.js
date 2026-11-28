@@ -13,6 +13,8 @@ const footer = document.querySelector('#sync');
 const editor = document.querySelector('#editor');
 const notice = document.querySelector('#notice');
 const prefix = 'habit-tamagotchi:';
+const petKey = prefix + 'pet';
+let petChoice = localStorage.getItem(petKey) === 'hedgehog' ? 'hedgehog' : 'pig';
 let account = 'guest';
 let email = '';
 let session;
@@ -216,7 +218,7 @@ function disconnect() {
 }
 
 const openDialog = (title, body, submit, button) => showDialog(editor, title, body, submit, button);
-const pet = createPetPanel(main, () => scene);
+const pet = createPetPanel(main, () => ({ ...scene, pet: petChoice }));
 const { log, logDialog, removeRow, skipPeriod } = createHabitEditor({
   readState: () => state,
   save,
@@ -277,7 +279,7 @@ function render() {
       if (activeDay) heatmap.scrollLeft = Math.max(0, activeDay.offsetLeft - heatmap.clientWidth + 24);
     }
   }
-  else if (page === '#settings') renderSettings(main, state, Boolean(session), email);
+  else if (page === '#settings') renderSettings(main, state, Boolean(session), email, petChoice);
   else home(previousCanvas);
   if (testMode) main.querySelector('.intro')?.insertAdjacentHTML('afterend', '<p class="test-data-status">Test mode · sample check-ins</p>');
   renderStatus();
@@ -352,6 +354,11 @@ document.addEventListener('click', event => {
 });
 main.addEventListener('change', event => {
   const { id, value, validity } = event.target;
+  if (id === 'pet-choice' && (value === 'pig' || value === 'hedgehog')) {
+    petChoice = value;
+    localStorage.setItem(petKey, petChoice);
+    return;
+  }
   if (id === 'history-date' && value && validity.valid) {
     if (testMode) testDate = value;
     else historicalDate = value;

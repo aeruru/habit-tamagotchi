@@ -1,7 +1,7 @@
 import { mountScene, treats, weatherNames } from './scene.js';
 
 function moodText(scene) {
-  if (scene.mood < 4) return 'Sleepy piglet';
+  if (scene.mood < 4) return scene.pet === 'hedgehog' ? 'Sleepy hedgehog' : 'Sleepy piglet';
   if (scene.weather < 3) return 'Waiting for clearer skies';
   return 'Exploring the grove';
 }
@@ -15,7 +15,9 @@ export function createPetPanel(main, readScene) {
     main.querySelector('#weather').textContent = (scene.night ? '☾ ' : '☀ ') + weatherNames[scene.weather];
     main.querySelector('#pet-state').textContent = rewardName || moodText(scene);
     if (previousCanvas) main.querySelector('canvas').replaceWith(previousCanvas);
-    else rewardAnimation = mountScene(main.querySelector('canvas'), readScene, () => {
+    main.querySelector('canvas').setAttribute('aria-label',
+      'An animated ' + (scene.pet === 'hedgehog' ? 'hedgehog' : 'piglet') + ' beside its hut in a meadow');
+    if (!previousCanvas) rewardAnimation = mountScene(main.querySelector('canvas'), readScene, () => {
       rewardName = '';
       const status = main.querySelector('#pet-state');
       if (status) status.textContent = moodText(readScene());

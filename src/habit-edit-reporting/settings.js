@@ -1,3 +1,4 @@
+import { petNames } from '../pet-display/web/scene.js';
 import { checkInTypes, clockOrder, effects, habitCategories, maxCheckInNumber, periodKey, settingsAt, validCheckInNumber, weekdays, workdays } from '../habit-engine/index.js';
 import { checked, clockTimeOptions, esc, selectableClockTime, selected, today } from './format.js';
 
@@ -11,7 +12,7 @@ function scheduleFor(habit, settings) {
   return habit?.period === 'week' ? 'week' : settings.schedule ?? 'day';
 }
 
-export function renderSettings(main, state, connected, email) {
+export function renderSettings(main, state, connected, email, pet = 'pig') {
   const habitEntries = Object.entries(state.habits);
   main.innerHTML = '<header class="intro"><div><h1>Settings<span>.</span></h1></div></header>' +
     '<section class="panel padded"><h2>Google Sheets</h2><p>' + (connected ? 'Connected as ' + esc(email) :
@@ -24,6 +25,10 @@ export function renderSettings(main, state, connected, email) {
       ' · ' + checkInTypes[habit.type] + ' · ' + habitCategories[habit.category] + '</p></div>' +
       '<button class="link" data-action="edit-habit" data-habit="' + esc(id) + '">Edit habit</button></article>').join('') +
     '</div></section>' +
+    '<section class="panel padded"><h2>Pet</h2><label>Animal<select id="pet-choice">' +
+    Object.entries(petNames).map(([id, name]) =>
+      '<option value="' + id + '" ' + selected(pet, id) + '>' + name + '</option>').join('') +
+    '</select></label></section>' +
     '<form id="settings-form"><section class="panel padded"><h2>Pet effects</h2><div class="settings-grid">' +
     Object.keys(effects).map(effect => '<label class="capitalize">' + effect + '<select name="' + effect + '">' +
       '<option value="">Unassigned</option>' + habitEntries.map(([id, habit]) => '<option value="' + esc(id) + '" ' +

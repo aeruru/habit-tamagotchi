@@ -28,7 +28,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .top { border-bottom: 1px solid var(--line); background: var(--white); }
 .nav { min-height: 72px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 10px; font-family: Georgia, serif; font-size: 1.35rem; color: var(--ink); text-decoration: none; white-space: nowrap; }
-.mark { display: grid; place-items: center; background: var(--green); color: #f7ead2; border-radius: 12px; width: 36px; height: 36px; font-size: 1.45rem; }
+.mark {
+  display: block;
+  clip-path: inset(3% 4.5% 4% 2.6% round 26%);
+  transform: scale(1.08);
+}
 nav { display: flex; gap: 9px; }
 nav a { text-decoration: none; padding: 7px 13px; border-radius: 999px; font-size: .94rem; }
 nav a[aria-current] { background: var(--pale); }
