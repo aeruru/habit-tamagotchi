@@ -25,7 +25,7 @@ export function createPetPanel(main, readScene) {
   function play(index) {
     const status = main.querySelector('#pet-state');
     if (!status) return;
-    rewardName = 'Enjoying ' + treats[index].toLowerCase();
+    rewardName = 'Enjoying ' + treats[index].name.toLowerCase();
     status.textContent = rewardName;
     rewardAnimation(index);
   }

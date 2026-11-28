@@ -19,12 +19,14 @@ const files = new Map([
 ]);
 const port = Number(process.env.PORT ?? 43183);
 createServer(async (request, response) => {
-  const file = files.get(request.url.split('?')[0]);
+  const path = request.url.split('?')[0];
+  const asset = /^\/src\/pet-display\/web\/assets\/[a-z0-9-]+\.png$/.test(path);
+  const file = files.get(path) ?? (asset ? [path.slice(1), 'image/png'] : undefined);
   if (!file) return response.writeHead(404).end();
   try {
-    response.setHeader('Content-Type', file[1] + '; charset=utf-8');
+    response.setHeader('Content-Type', file[1].startsWith('text/') ? file[1] + '; charset=utf-8' : file[1]);
     response.end(await readFile(new URL(file[0], import.meta.url)));
-  } catch {
-    response.writeHead(500).end();
+  } catch (error) {
+    response.writeHead(error.code === 'ENOENT' ? 404 : 500).end();
   }
 }).listen(port, '127.0.0.1', () => console.log('http://localhost:' + port));

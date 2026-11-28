@@ -13,6 +13,7 @@ export const effects = {
   weather: { start: 3, max: 6 }, mood: { start: 4, max: 7 }, hut: { start: 2, max: 7 },
 };
 export const defaultAssignments = { weather: 'bedtime', mood: 'sleep', hut: 'exercise' };
+export const habitCategories = { health: 'Health', work: 'Work', family: 'Family' };
 export const checkInNoteLimit = 500;
 export const checkInTypes = { count: 'Count', clock: 'Clock time', number: 'Number' };
 export const maxCheckInNumber = 10000;
@@ -32,6 +33,13 @@ export function shift(key, days) {
 }
 export function periodKey(habit, key) {
   return habit.period === 'week' ? shift(key, -((localDate(key).getDay() + 6) % 7)) : key;
+}
+
+export const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export const workdays = [1, 2, 3, 4, 5];
+
+export function isScheduled(settings, date) {
+  return !settings.days || settings.days.includes(localDate(date).getDay());
 }
 
 export function defaultSettings(id, habit = habits[id]) {
@@ -56,7 +64,7 @@ export function measure(rows) {
 }
 
 export function validCheckInNumber(value) {
-  return Number.isFinite(value) && value >= 0 && value <= maxCheckInNumber && Number(value.toPrecision(2)) === value;
+  return Number.isFinite(value) && value >= 0 && value <= maxCheckInNumber && Number(value.toFixed(2)) === value;
 }
 
 function clockMinutes(time) {
@@ -127,7 +135,9 @@ export function progression(state, id, range, now = dateKey()) {
   let streak = 0;
   for (let date = start; date <= current; date = shift(date, step)) {
     const closed = shift(date, step) <= now;
-    const result = outcome(settingsAt(state, id, date), groups.get(date) ?? [], closed);
+    const settings = settingsAt(state, id, date);
+    if (!isScheduled(settings, date)) continue;
+    const result = outcome(settings, groups.get(date) ?? [], closed);
     if (result === 'met') {
       level = Math.min(range.max, level + 1);
       streak++;
@@ -150,7 +160,7 @@ export function sceneState(state, now = new Date()) {
 }
 
 export function materialize(operations, today = dateKey()) {
-  const definitions = { ...habits };
+  const definitions = Object.fromEntries(Object.entries(habits).map(([id, habit]) => [id, { ...habit, category: 'health' }]));
   const records = new Map();
   const settings = new Map();
   const rewards = new Set();
@@ -160,7 +170,7 @@ export function materialize(operations, today = dateKey()) {
     start = [start, op.start].sort()[0];
     for (const { id, ...definition } of op.habits ?? []) {
       if (definition.type === 'integer') definition.type = 'number';
-      definitions[id] = { ...definitions[id], ...definition };
+      definitions[id] = { category: 'health', ...definitions[id], ...definition };
     }
     for (const row of op.records ?? []) {
       if (row.deleted) records.delete(row.id);

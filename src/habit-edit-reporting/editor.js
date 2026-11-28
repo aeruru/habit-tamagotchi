@@ -1,11 +1,12 @@
-import { checkInNoteLimit, maxCheckInNumber, meals, outcome, periodKey, rowsFor, settingsAt, validCheckInNumber, valueUnits } from '../habit-engine/index.js';
+import { checkInNoteLimit, isScheduled, maxCheckInNumber, meals, outcome, periodKey, rowsFor, settingsAt, validCheckInNumber, valueUnits } from '../habit-engine/index.js';
 import { clockTimeOptions, esc, selectableClockTime, selected, today } from './format.js';
 
 export function showDialog(editor, title, body, submit, button = 'Save check-in') {
   editor.innerHTML = '<form><h2 id="dialog-title">' + esc(title) + '</h2>' + body +
     '<p class="error" role="alert"></p><div class="dialog-actions"><button type="button" class="soft" data-action="cancel">Cancel</button>' +
     '<button type="submit" class="primary">' + button + '</button></div></form>';
-  editor.querySelector('form').addEventListener('submit', event => {
+  const form = editor.querySelector('form');
+  form.addEventListener('submit', event => {
     event.preventDefault();
     try {
       submit(new FormData(event.target));
@@ -15,6 +16,7 @@ export function showDialog(editor, title, body, submit, button = 'Save check-in'
     }
   });
   editor.showModal();
+  return form;
 }
 
 export function createHabitEditor({ readState, save, say, showDialog, playReward }) {
@@ -40,7 +42,7 @@ export function createHabitEditor({ readState, save, say, showDialog, playReward
       throw new Error('Enter a whole number within the supported range.');
     }
     if (type === 'number' && !validCheckInNumber(values.value)) {
-      throw new Error('Enter a number from 0 to ' + maxCheckInNumber.toLocaleString() + ' with at most two significant digits, such as 7.5 or 120.');
+      throw new Error('Enter a number from 0 to ' + maxCheckInNumber.toLocaleString() + ' with at most two decimal places, such as 7.55 or 120.');
     }
     if (type === 'clock' && !selectableClockTime(values.value, original?.value)) {
       throw new Error('Choose a time in 15-minute increments.');
@@ -51,7 +53,7 @@ export function createHabitEditor({ readState, save, say, showDialog, playReward
     const settings = settingsAt(state, id, periodKey(habit, date));
     const rewardKey = id + ':' + periodKey(habit, date);
     const next = [...currentRows.filter(existing => existing.id !== row.id), row];
-    const reward = live && !original && settings.treat && !state.rewards.has(rewardKey) &&
+    const reward = live && isScheduled(settings, date) && !original && settings.treat && !state.rewards.has(rewardKey) &&
       (outcome(settings, currentRows, false) !== 'met' && outcome(settings, next, false) === 'met');
     save({ records: [row], ...(reward && { reward: rewardKey }) }, { records: [original ?? { id: row.id, deleted: true }] });
     if (reward) playReward();
@@ -77,7 +79,7 @@ export function createHabitEditor({ readState, save, say, showDialog, playReward
       const unit = row?.valueUnit ?? habit.unit;
       inputs = '<label>' + (unit && unit !== 'number' ? 'Value (' + esc(unit) + ')' : 'Value') +
         '<input required type="number" inputmode="decimal" step="any" min="0" max="' + maxCheckInNumber +
-        '" name="value" value="' + esc(row?.value) + '"></label><p>Use up to two significant digits, like 7.5 or 120.</p>';
+        '" name="value" value="' + esc(row?.value) + '"></label><p>Use up to two decimal places, like 7.55 or 120.</p>';
     }
     if (type === 'duration') inputs = '<label>Hours slept<input required type="number" step="0.01" min="0" max="24" name="value" value="' + esc(row?.value) + '"></label>';
     if (type === 'rating') inputs = '<label>Meal<select name="meal">' + meals.map(meal => '<option ' + selected(meal, row?.meal) + '>' + meal + '</option>').join('') +

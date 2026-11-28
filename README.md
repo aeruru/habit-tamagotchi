@@ -11,9 +11,9 @@ npm start
 npm test
 ```
 
-Open [localhost:43183](http://localhost:43183). The local profile works immediately. Choose **History** to backfill, move, or remove an entry, and **Settings** to configure habits and pet effects.
+Open [localhost:43183](http://localhost:43183) and connect Google to see and log check-ins. To try the app with sample entries, choose **Load test data** in the footer. Edits in test mode are temporary and never sync. Use **History** to edit or remove a check-in, **Trends** to view charts or backfill, and **Settings** to configure habits and pet effects.
 
-Under **Settings → Habits**, edit a starter habit or add your own. Every habit has a name, emoji, daily or weekly goal, and a Count, Clock time, or Number check-in. Count entries add their entered number of occurrences. Clock-time and number entries each count once. Clock-time habits can require a check-in by a goal time and set a later almost-goal time. Numbers range from 0 to 10,000 and allow up to two significant digits (for example, 7.5 or 120). **Track without a goal** records check-ins without awarding progress or treats. Changing the schedule regroups past check-ins, and changing the input type applies to new check-ins. Notes can be up to 500 characters.
+Under **Settings → Habits**, edit a starter habit or add your own. Every habit has a name, emoji, daily or weekly goal, and a Count, Clock time, or Number check-in. Count entries add their entered number of occurrences. Clock-time and number entries each count once. Clock-time habits can require a check-in by a goal time and set a later almost-goal time. Numbers range from 0 to 10,000 and allow up to two decimal places (for example, 7.55 or 120). Choose **No goal** under **Goal based on** to record check-ins without awarding progress or treats. Changing the schedule regroups past check-ins, and changing the input type applies to new check-ins. Notes can be up to 500 characters.
 
 ## Enable Google Sheets
 
@@ -24,7 +24,7 @@ Under **Settings → Habits**, edit a starter habit or add your own. Every habit
 
 If sync pauses with HTTP 403, check the operation and Google reason shown in the footer. For `SERVICE_DISABLED` or `accessNotConfigured`, enable the named API in the same Google Cloud project as the OAuth client, then choose **Sync now**. For `ACCESS_TOKEN_SCOPE_INSUFFICIENT` or `insufficientPermissions`, disconnect, reconnect, and grant the requested permissions.
 
-App operations are stored locally and synced to Google's private app-data folder. The spreadsheet is an export with app-managed **Habit records**, **Habit settings**, and **Pet settings** tabs. Place your own charts and analysis on a separate tab. App retries reuse record and operation IDs. The client serializes sync in a browser where Web Locks are available. Simultaneous first-time spreadsheet creation from separate devices can race. A later sync selects a single tagged spreadsheet consistently.
+App operations are stored locally and synced to Google's private app-data folder. Set **Category** to **Health**, **Work**, or **Family** in the habit editor. Sync puts check-ins in the corresponding **Health habits**, **Work habits**, or **Family habits** tab in the same spreadsheet, alongside shared **Habits**, **Habit settings**, and **Pet settings** tabs. Existing habits default to Health, and an existing **Habit records** tab is renamed **Health habits** on the next sync. Place your own charts and analysis on a separate tab. App retries reuse record and operation IDs. The client serializes sync in a browser where Web Locks are available. Simultaneous first-time spreadsheet creation from separate devices can race. A later sync selects a single tagged spreadsheet consistently.
 
 ## Defaults
 

@@ -1,11 +1,17 @@
-import { effects, goalRubric, measure, periodKey, progression, qualifyingCount, rowsFor, settingsAt } from '../habit-engine/index.js';
+import { effects, goalRubric, habitCategories, isScheduled, measure, periodKey, progression, qualifyingCount, rowsFor, settingsAt } from '../habit-engine/index.js';
 import { esc, today } from './format.js';
 
-export function renderCheckIns(container, state) {
-  container.innerHTML = Object.entries(state.habits).map(([id, habit]) => {
+export function renderCheckIns(container, state, category = 'health') {
+  const tabs = Object.entries(habitCategories).map(([id, name]) => {
+    const active = id === category;
+    return '<button type="button" role="tab" id="checkins-tab-' + id +
+      '" aria-controls="checkins-category-content" aria-selected="' + active + '" tabindex="' + (active ? 0 : -1) +
+      '" data-action="check-in-category" data-category="' + id + '">' + name + '</button>';
+  }).join('');
+  const cards = Object.entries(state.habits).filter(([, habit]) => habit.category === category).map(([id, habit]) => {
     const date = today();
     const settings = settingsAt(state, id, periodKey(habit, date));
-    if (!settings.enabled) return '';
+    if (!settings.enabled || !isScheduled(settings, date)) return '';
     const rows = rowsFor(state, id, date);
     const skip = rows.find(row => row.skip);
     const value = settings.loggingOnly ? measure(rows) : qualifyingCount(settings, rows);
@@ -26,5 +32,8 @@ export function renderCheckIns(container, state) {
       '</p></div><div class="habit-actions"><button class="primary" data-action="' + action + '" data-habit="' + esc(id) + '">' + button +
       '</button>' + (quick ? '<button class="link" data-action="log" data-habit="' + esc(id) + '">Log</button>' : '') +
       (skip ? '' : '<button class="link muted" data-action="skip" data-habit="' + esc(id) + '">Skip</button>') + '</div></article>';
-  }).join('') || '<div class="panel empty">Enable a habit in <a href="#settings">Settings</a> to get started.</div>';
+  }).join('') || '<div class="panel empty">No ' + habitCategories[category].toLowerCase() +
+    ' habits scheduled today. <a href="#settings">Manage habits</a></div>';
+  container.innerHTML = '<div class="checkin-tabs" role="tablist" aria-label="Habit categories">' + tabs + '</div>' +
+    '<div role="tabpanel" id="checkins-category-content" aria-labelledby="checkins-tab-' + category + '">' + cards + '</div>';
 }

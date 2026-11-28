@@ -7,6 +7,20 @@ const row = (habit, date, value, id = habit + date) => ({ habit, date, value, id
 const operation = (id, fields) => ({ id, updated: id, start: monday, ...fields });
 const state = records => materialize([operation('1', { records })], monday);
 
+test('days off preserve a streak and a missed scheduled day resets it', () => {
+  const friday = shift(monday, 4);
+  const nextMonday = shift(monday, 7);
+  for (const days of [[1, 2, 3, 4, 5], [1, 5]]) {
+    const data = materialize([operation('1', {
+      habits: [{ id: 'hunger', start: friday }],
+      settings: [{ habit: 'hunger', date: friday, days, updated: '1' }],
+      records: [row('hunger', friday, 4), row('hunger', shift(friday, 1), 4)],
+    })], nextMonday);
+    assert.deepEqual(progression(data, 'hunger', effects.weather, nextMonday), { level: 4, streak: 1 });
+    assert.deepEqual(progression(data, 'hunger', effects.weather, shift(nextMonday, 1)), { level: 2, streak: 0 });
+  }
+});
+
 test('older bedtime targets and sleep values remain readable', () => {
   const data = materialize([operation('1', {
     records: [row('bedtime', monday, '23:55'), row('sleep', monday, 7.5)],
@@ -109,9 +123,9 @@ test('clock targets distinguish on time, almost, and late across midnight', () =
   assert.equal(result('23:00', true, { loggingOnly: true }), 'inactive');
 });
 
-test('number check-ins allow up to two significant digits between zero and 10000', () => {
-  for (const value of [0, 7.5, 0.25, 12, 120, 10000]) assert.ok(validCheckInNumber(value), String(value));
-  for (const value of [-1, 7.25, 123, 11000, NaN, Infinity]) assert.ok(!validCheckInNumber(value), String(value));
+test('number check-ins allow up to two decimal places between zero and 10000', () => {
+  for (const value of [0, 7.5, 7.55, 0.25, 123, 9999.99, 10000]) assert.ok(validCheckInNumber(value), String(value));
+  for (const value of [-1, 7.555, 0.001, 10000.01, NaN, Infinity]) assert.ok(!validCheckInNumber(value), String(value));
 });
 
 test('hunger records a number but reaches its daily goal after any check-in', () => {

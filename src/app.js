@@ -1,12 +1,12 @@
-import { defaultSettings, materialize, rowsFor, sceneState, shift } from './habit-engine/index.js';
+import { defaultSettings, habitCategories, materialize, rowsFor, sceneState, shift } from './habit-engine/index.js';
 import { createHabitEditor, showDialog } from './habit-edit-reporting/editor.js';
 import { renderCheckIns } from './habit-edit-reporting/check-ins.js';
 import { esc, labelDate, today } from './habit-edit-reporting/format.js';
-import { renderHistory } from './habit-edit-reporting/history.js';
-import { renderTrends, trendRanges } from './habit-edit-reporting/history-charts.js';
+import { historyPageSize, renderHistory } from './habit-edit-reporting/history.js';
+import { renderTrends, sampleCheckInJournal, trendRanges } from './habit-edit-reporting/history-charts.js';
 import { habitDialog, renderSettings, submitSettings } from './habit-edit-reporting/settings.js';
 import { createPetPanel } from './pet-display/web/panel.js';
-import { cacheGoogleConnection, connectGoogle, googleSession, restoreGoogleConnection } from './integrations/google.js';
+import { cacheGoogleConnection, connectGoogle, googleSession, restoreGoogleConnection, sheetsExportVersion } from './integrations/google.js';
 
 const main = document.querySelector('#main');
 const footer = document.querySelector('#sync');
@@ -25,13 +25,20 @@ let syncing = false;
 let syncTimer;
 let undo;
 let historicalDate = today();
+let visibleHistoryCount = historyPageSize;
+let checkInCategory = 'health';
+let historyCategory = 'all';
+let trendCategory = 'all';
 let trendWeeks = trendRanges[0];
-let showTrendTestData = false;
-let testTrendDate;
+let testMode = false;
+let testOperations;
+let testDate = today();
 let scene;
 let state;
 
 function key(suffix) { return prefix + account + ':' + suffix; }
+function checkInsAvailable() { return Boolean(session) || testMode; }
+function selectedHistoryDate() { return testMode ? testDate : historicalDate; }
 function googleClientId() {
   return document.querySelector('meta[name=google-client-id]').content || localStorage.getItem(prefix + 'client');
 }
@@ -50,8 +57,9 @@ function expireGoogleConnection() {
   if (!session) return;
   const { token, ...profile } = googleConnection;
   setGoogleConnection(profile);
-  if (editor.open || main.contains(document.activeElement) && document.activeElement.matches('input, select')) renderStatus();
-  else render();
+  if (!testMode && editor.open) editor.close();
+  reload();
+  render();
 }
 function operations() {
   const stem = key('op:');
@@ -59,18 +67,22 @@ function operations() {
     .map(name => JSON.parse(localStorage.getItem(name))).filter(Boolean);
 }
 function reload() {
-  state = materialize(operations());
-  scene = sceneState(state);
+  state = materialize(testMode ? testOperations : operations());
+  scene = sceneState(checkInsAvailable() ? state : materialize([]));
 }
 function save(fields, inverse) {
+  if (fields.records && !checkInsAvailable()) throw new Error('Connect Google or load test data to save check-ins.');
   const id = crypto.randomUUID();
   const op = { id, updated: new Date().toISOString(), start: state.start, ...fields };
-  localStorage.setItem(key('op:' + id), JSON.stringify(op));
-  localStorage.setItem(key('dirty'), 'true');
+  if (testMode) testOperations.push(op);
+  else {
+    localStorage.setItem(key('op:' + id), JSON.stringify(op));
+    localStorage.setItem(key('dirty'), 'true');
+  }
   undo = inverse;
   reload();
   render();
-  queueSync();
+  if (!testMode) queueSync();
 }
 function say(message) {
   notice.replaceChildren(document.createTextNode(message));
@@ -87,14 +99,20 @@ function queueSync() {
   renderStatus();
 }
 function renderStatus() {
+  const testToggle = '<button type="button" class="link muted test-data-toggle" data-action="toggle-test-data">' +
+    (testMode ? 'Exit test data' : 'Load test data') + '</button>';
+  if (testMode) {
+    footer.innerHTML = '<span>Test data · changes stay in this preview</span>' + testToggle;
+    return;
+  }
   const pending = localStorage.getItem(key('dirty'));
-  let message = 'Local profile · saved on this device';
+  let message = '';
   if (session) message = syncStatus || (pending ? 'Changes waiting to sync' : 'Synced to Google');
   else if (account !== 'guest') message = 'Google session expired · reconnect to sync this profile';
-  footer.innerHTML = '<span>' + esc(message) + '</span>' +
+  footer.innerHTML = (message ? '<span>' + esc(message) + '</span>' : '') +
     (sheetId ? ' <a target="_blank" rel="noopener" href="https://docs.google.com/spreadsheets/d/' + encodeURIComponent(sheetId) + '/edit">Open spreadsheet</a>' : '') +
     (session ? ' <button class="link" data-action="retry">Sync now</button>' :
-      account !== 'guest' ? ' <button class="link" data-action="google">Reconnect Google</button>' : '');
+      account !== 'guest' ? ' <button class="link" data-action="google">Reconnect Google</button>' : '') + testToggle;
 }
 async function synchronize() {
   if (!session || syncing) return;
@@ -127,7 +145,8 @@ async function synchronize() {
     sheetId = verifiedSheetId;
     googleConnection.sheetId = sheetId;
     cacheGoogleConnection(googleConnection);
-    if (missing.length || snapshot.some(op => !journal.has(op.id)) || localStorage.getItem(key('dirty'))) {
+    const exportVersion = localStorage.getItem(key('sheets-export-version'));
+    if (exportVersion !== sheetsExportVersion || missing.length || snapshot.some(op => !journal.has(op.id)) || localStorage.getItem(key('dirty'))) {
       const exportState = materialize(snapshot);
       exportState.settings = [
         ...Object.entries(exportState.habits).map(([id, habit]) => ({
@@ -136,6 +155,7 @@ async function synchronize() {
         ...exportState.settings,
       ];
       await currentSession.publish(sheetId, exportState);
+      localStorage.setItem(key('sheets-export-version'), sheetsExportVersion);
     }
     if (operations().length === snapshot.length) localStorage.removeItem(key('dirty'));
     syncStatus = '';
@@ -175,6 +195,7 @@ function signIn() {
     if (!profile.sub) throw new Error('Google did not return an account ID.');
     const previousSheet = googleConnection?.sub === profile.sub ? sheetId : undefined;
     setGoogleConnection({ ...authorization, clientId, sub: profile.sub, email: profile.email ?? 'Google account', sheetId: previousSheet });
+    testMode = false;
     syncStatus = '';
     undo = undefined;
     notice.replaceChildren();
@@ -215,7 +236,25 @@ function home(previousCanvas) {
     google.textContent = 'Reconnect Google';
   }
   pet.render(previousCanvas);
-  renderCheckIns(main.querySelector('#cards'), state);
+  if (checkInsAvailable()) renderCheckIns(main.querySelector('#cards'), state, checkInCategory);
+  else {
+    const checkIns = main.querySelector('.checkins');
+    checkIns.removeAttribute('aria-labelledby');
+    checkIns.innerHTML = '<p class="panel empty">Connect Google to see and log your check-ins.</p>';
+  }
+}
+
+function connectPrompt(message) {
+  return '<section class="panel padded"><p>' + message + '</p><button type="button" class="soft" data-action="google">' +
+    (googleConnection ? 'Reconnect Google' : 'Connect Google') + '</button></section>';
+}
+
+function selectCheckInCategory(category) {
+  if (!checkInsAvailable() || !Object.hasOwn(habitCategories, category)) return;
+  checkInCategory = category;
+  const cards = main.querySelector('#cards');
+  renderCheckIns(cards, state, checkInCategory);
+  cards.querySelector('[aria-selected="true"]').focus({ preventScroll: true });
 }
 
 function render() {
@@ -226,9 +265,13 @@ function render() {
     if (a.hash === page) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
-  if (page === '#history') renderHistory(main, state);
+  if (!checkInsAvailable() && (page === '#history' || page === '#trends')) {
+    const title = page === '#history' ? 'History' : 'Trends';
+    main.innerHTML = '<header class="intro"><h1>' + title + '<span>.</span></h1></header>' +
+      connectPrompt('Connect Google to see your ' + title.toLowerCase() + '.');
+  } else if (page === '#history') renderHistory(main, state, visibleHistoryCount, historyCategory);
   else if (page === '#trends') {
-    renderTrends(main, state, trendWeeks, showTrendTestData ? testTrendDate ?? today() : historicalDate, showTrendTestData);
+    renderTrends(main, state, trendWeeks, selectedHistoryDate(), trendCategory);
     for (const heatmap of main.querySelectorAll('.heatmap-scroll')) {
       const activeDay = heatmap.querySelector('[tabindex="0"]');
       if (activeDay) heatmap.scrollLeft = Math.max(0, activeDay.offsetLeft - heatmap.clientWidth + 24);
@@ -236,13 +279,14 @@ function render() {
   }
   else if (page === '#settings') renderSettings(main, state, Boolean(session), email);
   else home(previousCanvas);
+  if (testMode) main.querySelector('.intro')?.insertAdjacentHTML('afterend', '<p class="test-data-status">Test mode · sample check-ins</p>');
   renderStatus();
 }
 
 function chooseHistoryDay(date, row) {
   const habitId = row.dataset.trendHabit;
   const scrollLeft = row.querySelector('.heatmap-scroll').scrollLeft;
-  if (showTrendTestData) testTrendDate = date;
+  if (testMode) testDate = date;
   else historicalDate = date;
   render();
   const updatedRow = [...main.querySelectorAll('.trend-row')].find(trend => trend.dataset.trendHabit === habitId);
@@ -267,18 +311,31 @@ document.addEventListener('click', event => {
       case 'settings': location.hash = 'settings'; break;
       case 'retry': synchronize(); break;
       case 'cancel': editor.close(); break;
+      case 'check-in-category': selectCheckInCategory(target.dataset.category); break;
       case 'quick': log(id, date, { value: 1 }, undefined, true); break;
       case 'log': logDialog(id, date, undefined, true); break;
-      case 'backfill': logDialog(id, historicalDate, undefined, false); break;
+      case 'backfill': logDialog(id, selectedHistoryDate(), undefined, false); break;
       case 'edit': if (record) logDialog(record.habit, record.date, record, false); break;
       case 'history-day': chooseHistoryDay(target.dataset.date, target.closest('.trend-row')); break;
-      case 'toggle-trend-data':
-        showTrendTestData = !showTrendTestData;
+      case 'older-check-ins': {
+        const firstOlderIndex = visibleHistoryCount;
+        visibleHistoryCount += historyPageSize;
         render();
-        main.querySelector('[data-action="toggle-trend-data"]').focus({ preventScroll: true });
+        main.querySelectorAll('.history-list article')[firstOlderIndex]?.querySelector('button')?.focus();
+        break;
+      }
+      case 'toggle-test-data':
+        testMode = !testMode;
+        if (testMode && !testOperations) testOperations = [sampleCheckInJournal(materialize([]))];
+        visibleHistoryCount = historyPageSize;
+        undo = undefined;
+        notice.replaceChildren();
+        reload();
+        render();
+        footer.querySelector('.test-data-toggle').focus({ preventScroll: true });
         break;
       case 'skip': skipPeriod(id, date); break;
-      case 'skip-history': skipPeriod(id, historicalDate); break;
+      case 'skip-history': skipPeriod(id, selectedHistoryDate()); break;
       case 'resume': removeRow(rowsFor(state, id, date).find(row => row.skip)); break;
       case 'remove': removeRow(record); break;
       case 'preview': pet.play(0); break;
@@ -295,13 +352,35 @@ document.addEventListener('click', event => {
 });
 main.addEventListener('change', event => {
   const { id, value, validity } = event.target;
-  if (id === 'history-date' && value && validity.valid) historicalDate = value;
+  if (id === 'history-date' && value && validity.valid) {
+    if (testMode) testDate = value;
+    else historicalDate = value;
+  }
+  else if (id === 'history-category') {
+    historyCategory = value;
+    visibleHistoryCount = historyPageSize;
+  }
+  else if (id === 'trend-category') trendCategory = value;
   else if (id === 'trend-range' && trendRanges.includes(Number(value))) trendWeeks = Number(value);
   else return;
   render();
   document.getElementById(id)?.focus({ preventScroll: true });
 });
 main.addEventListener('keydown', event => {
+  if (event.target.dataset.action === 'check-in-category') {
+    const categories = Object.keys(habitCategories);
+    const index = categories.indexOf(checkInCategory);
+    const options = {
+      ArrowLeft: categories[(index + categories.length - 1) % categories.length],
+      ArrowRight: categories[(index + 1) % categories.length],
+      Home: categories[0],
+      End: categories.at(-1),
+    };
+    if (!Object.hasOwn(options, event.key)) return;
+    event.preventDefault();
+    selectCheckInCategory(options[event.key]);
+    return;
+  }
   if (event.target.dataset.action !== 'history-day') return;
   const offsets = { ArrowLeft: -7, ArrowRight: 7, ArrowUp: -1, ArrowDown: 1 };
   if (!Object.hasOwn(offsets, event.key)) return;
@@ -324,7 +403,7 @@ addEventListener('storage', event => {
 addEventListener('online', queueSync);
 let lastDate = today();
 setInterval(() => {
-  scene = sceneState(state);
+  if (checkInsAvailable()) scene = sceneState(state);
   if (lastDate !== today()) {
     lastDate = today();
     reload();

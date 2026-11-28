@@ -34,6 +34,8 @@ nav a { text-decoration: none; padding: 7px 13px; border-radius: 999px; font-siz
 nav a[aria-current] { background: var(--pale); }
 main { padding-block: 40px 24px; }
 .intro { display: flex; justify-content: space-between; align-items: end; gap: 15px; margin-bottom: 26px; }
+.trend-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.trend-filters label + label { margin-top: 0; }
 .intro p:not(.eyebrow) { margin-top: 8px; }
 .eyebrow { color: var(--green); text-transform: uppercase; font-weight: 750; letter-spacing: .13em; font-size: .84rem; margin-bottom: 8px; }
 .home-grid { display: grid; grid-template-columns: minmax(0, 1.53fr) minmax(0, 1fr); align-items: start; gap: 24px; }
@@ -46,6 +48,9 @@ canvas { display: block; width: 100%; height: auto; }
 .scene-footer p { font-size: .91rem; }
 .checkins-heading, .section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
 .checkins-heading a { font-size: .9rem; }
+.checkin-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.checkin-tabs button { min-height: 40px; padding: 6px 14px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font-weight: 650; }
+.checkin-tabs button[aria-selected=true] { border-bottom-color: var(--green); color: var(--green); background: var(--pale); border-radius: 8px 8px 0 0; }
 .habit { display: flex; align-items: center; gap: 13px; padding: 12px; margin-bottom: 8px; }
 .habit:last-child { margin-bottom: 0; }
 .habit-icon { display: grid; place-items: center; width: 43px; height: 43px; border-radius: 12px; flex: none; background: #e6e8f3; color: #454879; font-size: 1.5rem; font-weight: 650; }
@@ -84,7 +89,7 @@ dialog::backdrop { background: #20332aa0; }
 dialog h2, dialog p, dialog label { margin-bottom: 12px; }
 .dialog-actions { display: flex; gap: 8px; justify-content: end; }
 .error, #settings-error { color: #862e32; }
-#notice:not(:empty) { position: fixed; z-index: 2; bottom: 13px; right: 13px; max-width: calc(100% - 26px); background: var(--green); color: #fff; padding: 10px 15px; border-radius: 12px; box-shadow: 0 5px 25px #253a3033; }
+#notice:not(:empty) { position: fixed; z-index: 2; bottom: 60px; right: 13px; max-width: calc(100% - 26px); background: var(--green); color: #fff; padding: 10px 15px; border-radius: 12px; box-shadow: 0 5px 25px #253a3033; }
 #notice button { border: 0; background: transparent; color: #fff; text-decoration: underline; }
 @media (max-width: 850px) {
   .shell { width: calc(100% - 34px); }
@@ -106,13 +111,7 @@ dialog h2, dialog p, dialog label { margin-bottom: 12px; }
 
 .check-in-note { white-space: pre-wrap; overflow-wrap: anywhere; }
 textarea { resize: vertical; }
-.clock-goals { display: none; }
-form:has(select[name="type"] option[value="clock"]:checked) .clock-goals { display: block; }
-form:has(select[name="type"] option[value="clock"]:checked) .frequency-near-goal { display: none; }
-.number-goals, .number-target { display: none; }
-form:has(select[name="type"] option[value="number"]:checked) .number-goals,
-.number-goals:has(select[name="number-mode"] option[value="value"]:checked) .number-target { display: block; }
-form:has(select[name="type"] option[value="number"]:checked):has(select[name="number-mode"] option[value="value"]:checked) .frequency-near-goal { display: none; }
+.habit-editor-fields [hidden] { display: none; }
 
 dialog:has(.habit-editor-fields) { width: min(520px, calc(100% - 24px)); padding: 18px; }
 .habit-editor-fields { display: grid; gap: 10px; }
@@ -126,15 +125,16 @@ dialog:has(.habit-editor-fields) { width: min(520px, calc(100% - 24px)); padding
 .habit-editor-pair > label:only-child { grid-column: 1 / -1; }
 .habit-editor-emoji input { text-align: center; }
 .habit-editor-fields .clock-goals p, .habit-editor-fields .number-target,
-.habit-editor-fields .number-target .habit-editor-pair { margin-top: 6px; }
+.habit-editor-fields .number-target .habit-editor-pair, .habit-editor-fields .number-target p,
+.habit-editor-fields .number-goal-help { margin-top: 6px; }
 .habit-editor-options { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
 dialog:has(.habit-editor-fields) .error:empty { display: none; }
 dialog:has(.habit-editor-fields) .dialog-actions { margin-top: 12px; }
 
 .trend-row h2 { margin-bottom: 14px; }
 .trend-row h3 { margin-bottom: 8px; }
-.trend-controls { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
-.trend-controls button { min-height: 40px; }
+.test-data-toggle { margin-inline-start: auto; }
+.test-data-status { margin: -14px 0 14px; color: var(--green); font-size: .9rem; font-weight: 650; }
 .trend-row-charts {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
@@ -170,7 +170,8 @@ dialog:has(.habit-editor-fields) .dialog-actions { margin-top: 12px; }
   border-radius: 3px;
 }
 .heat-open, .heat-inactive { background: transparent; border-color: #aebcaa; }
-.heat-miss { background: #e0e3df; }
+.heat-empty { background: #e0e3df; }
+.heat-miss { background: #efb6af; }
 .heat-skip { background: repeating-linear-gradient(135deg, #a99b844d 0 2px, transparent 2px 5px); }
 .heat-almost { background: #bbd7b5; }
 .heat-met { background: #518b62; }

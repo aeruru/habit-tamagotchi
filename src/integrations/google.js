@@ -1,10 +1,11 @@
-import { periodKey, valueUnits } from '../habit-engine/index.js';
+import { habitCategories, periodKey, valueUnits, weekdays } from '../habit-engine/index.js';
 
 const drive = 'https://www.googleapis.com/drive/v3';
 const upload = 'https://www.googleapis.com/upload/drive/v3';
 const sheets = 'https://sheets.googleapis.com/v4/spreadsheets';
 const tag = 'habitTamagotchiV1';
 const scopes = ['openid', 'https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive.appdata'];
+export const sheetsExportVersion = '2';
 const connectionKey = 'habit-tamagotchi:google-connection';
 
 export function cacheGoogleConnection(connection) {
@@ -133,33 +134,39 @@ export function googleSession(token) {
   async function publish(id, state) {
     const url = sheets + '/' + encodeURIComponent(id);
     const current = await api('Read spreadsheet tabs', url + '?fields=sheets(properties)');
+    const recordHeaders = ['Record ID', 'Habit ID', 'Local date', 'Period start', 'Value', 'Unit', 'Meal', 'Skipped', 'Updated', 'Note'];
+    const categoryRecords = Object.fromEntries(Object.keys(habitCategories).map(category => [category, [recordHeaders]]));
+    for (const row of [...state.records].sort((a, b) => a.date.localeCompare(b.date))) {
+      const habit = state.habits[row.habit];
+      categoryRecords[habit.category].push([
+        row.id, row.habit, row.date, row.skip ? row.date : periodKey(habit, row.date), row.value ?? '',
+        row.valueUnit ?? '', row.meal ?? '', row.skip, row.updated, row.note ?? '',
+      ]);
+    }
     const tabs = {
-      'Habit records': [
-        ['Record ID', 'Habit ID', 'Local date', 'Period start', 'Value', 'Unit', 'Meal', 'Skipped', 'Updated', 'Note'],
-        ...state.records.sort((a, b) => a.date.localeCompare(b.date)).map(row => [
-          row.id, row.habit, row.date, row.skip ? row.date : periodKey(state.habits[row.habit], row.date), row.value ?? '',
-          row.valueUnit ?? '', row.meal ?? '', row.skip, row.updated, row.note ?? '',
-        ]),
-      ],
+      ...Object.fromEntries(Object.entries(habitCategories).map(([category, label]) => [label + ' habits', categoryRecords[category]])),
       'Habit settings': [
         ['Habit ID', 'Effective date', 'Enabled', 'Goal', 'Almost goal', 'Logging only', 'Treat', 'Updated', 'Period', 'Goal time', 'Almost-goal time',
-          'Number target', 'Almost-goal number', 'Number comparison'],
+          'Number target', 'Almost-goal number', 'Number comparison', 'Schedule', 'Scheduled days'],
         ...state.settings.map(row => [
           row.habit, row.date, row.enabled, row.goal, row.near, row.loggingOnly, row.treat, row.updated, row.period,
           row.deadline, row.grace, row.numberGoal, row.numberAlmost, row.numberGoal != null ? row.comparison : '',
+          row.schedule ?? '', row.days?.map(day => weekdays[day]).join(', ') ?? '',
         ]),
       ],
       'Habits': [
-        ['Habit ID', 'Name', 'Period', 'Check-in value type', 'Unit', 'Icon'],
+        ['Habit ID', 'Name', 'Period', 'Check-in value type', 'Unit', 'Icon', 'Category'],
         ...Object.entries(state.habits).map(([id, habit]) => [
-          id, habit.name, habit.period, habit.type, habit.type === 'number' ? habit.unit ?? valueUnits.number : valueUnits[habit.type], habit.icon,
+          id, habit.name, habit.period, habit.type, habit.type === 'number' ? habit.unit ?? valueUnits.number : valueUnits[habit.type],
+          habit.icon, habitCategories[habit.category],
         ]),
       ],
       'Pet settings': [['Effect', 'Habit ID'], ...Object.entries(state.assignments)],
     };
+    const existingTabs = new Map(current.sheets.map(({ properties }) => [properties.title, properties]));
     const requests = [];
     for (const [title, values] of Object.entries(tabs)) {
-      const tab = current.sheets.find(sheet => sheet.properties.title === title)?.properties;
+      const tab = existingTabs.get(title) ?? (title === 'Health habits' ? existingTabs.get('Habit records') : undefined);
       let sheetId = tab?.sheetId;
       const rowCount = Math.max(tab?.gridProperties.rowCount ?? 1000, values.length + 50);
       const columnCount = Math.max(tab?.gridProperties.columnCount ?? 12, values[0].length);
@@ -169,8 +176,11 @@ export function googleSession(token) {
         while (!sheetId || current.sheets.some(sheet => sheet.properties.sheetId === sheetId)
           || requests.some(request => request.addSheet?.properties.sheetId === sheetId));
         requests.push({ addSheet: { properties: { sheetId, title, gridProperties } } });
-      } else if (rowCount !== tab.gridProperties.rowCount || columnCount !== tab.gridProperties.columnCount) {
-        requests.push({ updateSheetProperties: { properties: { sheetId, gridProperties }, fields: 'gridProperties' } });
+      } else {
+        if (tab.title !== title) requests.push({ updateSheetProperties: { properties: { sheetId, title }, fields: 'title' } });
+        if (rowCount !== tab.gridProperties.rowCount || columnCount !== tab.gridProperties.columnCount) {
+          requests.push({ updateSheetProperties: { properties: { sheetId, gridProperties }, fields: 'gridProperties' } });
+        }
       }
       const rows = values.map(row => ({ values: row.map(value => ({
         userEnteredValue: typeof value === 'number' ? { numberValue: value } :

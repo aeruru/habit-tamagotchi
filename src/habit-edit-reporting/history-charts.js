@@ -1,13 +1,13 @@
-import { clockOrder, localDate, measure, outcome, periodKey, settingsAt, shift, valueUnits } from '../habit-engine/index.js';
+import { clockOrder, defaultSettings, isScheduled, localDate, measure, outcome, periodKey, settingsAt, shift, valueUnits } from '../habit-engine/index.js';
 import { esc, labelDate, selected, today, valueDisplay } from './format.js';
-import { renderPeriodOutcomes } from './history.js';
+import { categoryFilter, renderPeriodOutcomes } from './history.js';
 
 export const trendRanges = [13, 26, 52];
 const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const monthLabel = new Intl.DateTimeFormat(undefined, { month: 'short' });
 const axisDate = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 
-const outcomeLabels = { miss: 'Missed', skip: 'Skipped', almost: 'Almost goal', met: 'Goal met',
+const outcomeLabels = { empty: 'No check-ins', miss: 'Below almost goal', skip: 'Skipped', almost: 'Almost goal', met: 'Goal met',
   open: 'In progress', inactive: 'Not tracked' };
 
 function heatmap(habit, recordsByPeriod, weeks, first, end, selectedDate, periodOutcome) {
@@ -16,9 +16,11 @@ function heatmap(habit, recordsByPeriod, weeks, first, end, selectedDate, period
   const activeDate = selectedPeriod >= first && selectedPeriod <= end ? selectedPeriod : periodKey(habit, end);
   const dateLabel = date => (weekly ? 'Week of ' : '') + labelDate(date);
   const describe = date => {
+    const status = periodOutcome(date);
+    if (status === 'empty') return outcomeLabels.empty;
     const count = measure(recordsByPeriod.get(date) ?? []);
     const activity = count === 0 ? 'No check-ins' : count + (count === 1 ? ' occurrence' : ' occurrences');
-    return outcomeLabels[periodOutcome(date)] + ' · ' + activity;
+    return outcomeLabels[status] + ' · ' + activity;
   };
   const summary = dateLabel(activeDate) + ' · ' + describe(activeDate);
   const columns = Array.from({ length: weeks }, (_, week) => {
@@ -50,7 +52,7 @@ function heatmap(habit, recordsByPeriod, weeks, first, end, selectedDate, period
 }
 
 function heatmapLegend() {
-  const items = ['miss', 'skip', 'almost', 'met', 'open'].map(status =>
+  const items = ['empty', 'miss', 'skip', 'almost', 'met', 'open'].map(status =>
     '<span><i class="heat-' + status + '" aria-hidden="true"></i>' +
     (status === 'open' ? 'Open or untracked' : outcomeLabels[status]) + '</span>');
   return '<div class="heatmap-legend" aria-label="Goal outcomes">' + items.join('') + '</div>';
@@ -73,7 +75,10 @@ function periodOutcomes(state, id, habit, records, trackingStart, end) {
     if (period < first) return 'inactive';
     if (!results.has(period)) {
       const closed = shift(period, daysPerPeriod) <= end;
-      results.set(period, outcome(settingsAt(state, id, period), groups.get(period) ?? [], closed));
+      const records = groups.get(period) ?? [];
+      const settings = settingsAt(state, id, period);
+      const status = isScheduled(settings, period) ? outcome(settings, records, closed) : 'inactive';
+      results.set(period, status === 'miss' && records.length === 0 ? 'empty' : status);
     }
     return results.get(period);
   };
@@ -109,11 +114,17 @@ function axisValue(unit, value) {
 function sampleRecords(state, start, end) {
   const records = [];
   for (const [index, [id, habit]] of Object.entries(state.habits).entries()) {
-    const { deadline, numberGoal } = settingsAt(state, id, periodKey(habit, end));
+    const currentPeriod = periodKey(habit, end);
+    const { deadline, numberGoal } = settingsAt(state, id, currentPeriod);
     const valueUnit = habit.type === 'number' ? habit.unit ?? valueUnits.number : valueUnits[habit.type];
     const clockCenter = clockOrder(deadline || '22:30', '00:00');
     const numberCenter = numberGoal ?? (valueUnit === 'hours' ? 7.5 : 4);
+    const belowGoalWeek = shift(currentPeriod, -14);
     for (let date = end, day = 0; date >= start; date = shift(date, -1), day++) {
+      if (habit.period === 'week' && habit.type === 'count' && date >= belowGoalWeek && date < currentPeriod) {
+        if (date === belowGoalWeek) records.push({ habit: id, date, value: 1, valueType: habit.type, valueUnit });
+        continue;
+      }
       const variation = Math.abs(Math.imul((day + 5) * (index + 3), 0x45d9f3b) ^ Math.imul(day + index, 0x27d4eb2d));
       if (variation % 23 === 0 && date === periodKey(habit, date)) {
         records.push({ habit: id, date, skip: true, period: habit.period });
@@ -132,6 +143,24 @@ function sampleRecords(state, start, end) {
     }
   }
   return records;
+}
+
+export function sampleCheckInJournal(state, end = today()) {
+  const start = shift(periodKey({ period: 'week' }, end), -7 * (trendRanges.at(-1) - 1));
+  const updated = start + 'T00:00:00.000Z';
+  const goals = {
+    sleep: { numberGoal: 7.5, numberAlmost: 7 },
+    exercise: { goal: 9, near: 6 },
+    walks: { goal: 3, near: 2 },
+  };
+  const settings = Object.entries(goals).map(([id, goal]) => {
+    const habit = state.habits[id];
+    return { ...defaultSettings(id, habit), ...goal, habit: id, period: habit.period, date: start, updated, frequency: true };
+  });
+  const records = sampleRecords({ ...state, settings }, start, end).map(row => ({
+    ...row, id: 'sample:' + row.habit + ':' + row.date, updated,
+  }));
+  return { id: 'sample-check-ins', start, updated, records, settings };
 }
 
 function linearTrend(points) {
@@ -207,29 +236,26 @@ function trendRow(state, id, habit, records, weeks, start, end, selectedDate, tr
     '<div><h3>Check-in values</h3>' + values + '</div></div></article>';
 }
 
-export function renderTrends(main, state, weeks, selectedDate, showTestData = false) {
+export function renderTrends(main, state, weeks, selectedDate, category = 'all') {
   const end = today();
   const start = shift(periodKey({ period: 'week' }, end), -7 * (weeks - 1));
   const byHabit = new Map();
-  const demoStart = shift(periodKey({ period: 'week' }, end), -7 * (trendRanges.at(-1) - 1));
-  const sourceRecords = showTestData ? sampleRecords(state, demoStart, end) : state.records;
-  for (const row of sourceRecords) {
+  for (const row of state.records) {
     if (row.date > end) continue;
     if (!byHabit.has(row.habit)) byHabit.set(row.habit, []);
     byHabit.get(row.habit).push(row);
   }
-  const rows = Object.entries(state.habits).map(([id, habit]) => {
+  const habits = Object.entries(state.habits).filter(([, habit]) => category === 'all' || habit.category === category);
+  const rows = habits.map(([id, habit]) => {
     const records = byHabit.get(id) ?? [];
     records.sort((a, b) => a.date.localeCompare(b.date) || (a.updated ?? '').localeCompare(b.updated ?? ''));
-    const trackingStart = showTestData ? demoStart : habit.start ?? state.start;
+    const trackingStart = habit.start ?? state.start;
     return trendRow(state, id, habit, records, weeks, start, end, selectedDate, trackingStart);
   });
-  main.innerHTML = '<header class="intro"><div><h1>Trends<span>.</span></h1>' +
-    (showTestData ? '<p>Showing sample check-ins for your habits.</p>' : '') + '</div>' +
-    '<div class="trend-controls"><button class="soft" type="button" data-action="toggle-trend-data">' +
-    (showTestData ? 'Show live data' : 'Load test data') + '</button>' +
-    '<label>Range<select id="trend-range">' + trendRanges.map(range =>
+  main.innerHTML = '<header class="intro"><h1>Trends<span>.</span></h1>' +
+    '<div class="trend-filters">' + categoryFilter('trend-category', category) + '<label>Range<select id="trend-range">' + trendRanges.map(range =>
       '<option value="' + range + '" ' + selected(range, weeks) + '>' + range + ' weeks</option>'
-    ).join('') + '</select></label></div></header>' + heatmapLegend() + rows.join('') +
-    (showTestData ? '' : renderPeriodOutcomes(state, selectedDate));
+    ).join('') + '</select></label></div></header>' +
+    (rows.length ? heatmapLegend() + rows.join('') : '<p>No habits in this category.</p>') +
+    renderPeriodOutcomes(state, selectedDate, category);
 }
